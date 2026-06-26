@@ -96,29 +96,61 @@ class DatabaseManager:
         return values
 
     @staticmethod
+    def _get_db_config() -> tuple[Optional[str], Optional[str], Optional[str], Optional[str]]:
+        """Resolve DB credentials from Streamlit secrets or environment variables."""
+        secret_values = {}
+
+        secrets_obj = getattr(st, 'secrets', None)
+        if secrets_obj is not None:
+            try:
+                if hasattr(secrets_obj, 'to_dict'):
+                    secret_values = secrets_obj.to_dict()
+                elif isinstance(secrets_obj, dict):
+                    secret_values = dict(secrets_obj)
+                elif hasattr(secrets_obj, 'get'):
+                    secret_values = dict(secrets_obj)
+            except Exception:
+                secret_values = {}
+
+        def _get_value(*keys: str):
+            for key in keys:
+                if not key:
+                    continue
+                if isinstance(secret_values, dict):
+                    if key in secret_values and secret_values[key] not in (None, ''):
+                        return secret_values[key]
+                    if key.lower() in secret_values and secret_values[key.lower()] not in (None, ''):
+                        return secret_values[key.lower()]
+                    nested = secret_values.get('neondb')
+                    if isinstance(nested, dict):
+                        if key in nested and nested[key] not in (None, ''):
+                            return nested[key]
+                        if key.lower() in nested and nested[key.lower()] not in (None, ''):
+                            return nested[key.lower()]
+
+            env_key = None
+            for key in keys:
+                if not key:
+                    continue
+                env_key = os.getenv(key)
+                if env_key:
+                    return env_key
+            return None
+
+        host = _get_value('NEON_HOST', 'HOST', 'host')
+        database = _get_value('NEON_DATABASE', 'DATABASE', 'database')
+        user = _get_value('NEON_USER', 'USER', 'user')
+        password = _get_value('NEON_PASSWORD', 'PASSWORD', 'password')
+
+        return host, database, user, password
+
+    @staticmethod
     def get_connection():
         """
         Create a fresh database connection every time.
         """
-        # Prefer Streamlit secrets when available, fall back to environment variables.
-        host = None
-        database = None
-        user = None
-        password = None
-
         try:
-            # Streamlit secrets (deployed apps) take precedence
-            if hasattr(st, 'secrets') and isinstance(st.secrets, dict):
-                host = st.secrets.get('NEON_HOST') or st.secrets.get('HOST')
-                database = st.secrets.get('NEON_DATABASE') or st.secrets.get('DATABASE')
-                user = st.secrets.get('NEON_USER') or st.secrets.get('USER')
-                password = st.secrets.get('NEON_PASSWORD') or st.secrets.get('PASSWORD')
-
-            # Fall back to environment variables
-            host = host or os.getenv('NEON_HOST')
-            database = database or os.getenv('NEON_DATABASE')
-            user = user or os.getenv('NEON_USER')
-            password = password or os.getenv('NEON_PASSWORD')
+            host, database, user, password = DatabaseManager._get_db_config()
 
             if not all([host, database, user, password]):
                 raise RuntimeError(
