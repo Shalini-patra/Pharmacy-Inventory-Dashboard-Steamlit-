@@ -157,7 +157,10 @@ class DatabaseManager:
                     'Database credentials not found. Set NEON_HOST, NEON_DATABASE, NEON_USER, NEON_PASSWORD '
                     'as environment variables or add them to Streamlit secrets.'
                 )
-
+            st.write("Host:", host)
+            st.write("Database:", database)
+            st.write("User:", user)
+            st.write("Password Exists:", password is not None)
             conn = psycopg2.connect(
                 host=host,
                 database=database,
@@ -171,6 +174,7 @@ class DatabaseManager:
         except Exception as e:
             # Raise a runtime error so calling pages can catch and show a consistent message.
             raise RuntimeError(f'Database connection failed: {str(e)}') from e
+    
 
     @staticmethod
     def _read_sql_safe(query: str, params: list | None = None):
