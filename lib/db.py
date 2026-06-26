@@ -100,20 +100,84 @@ class DatabaseManager:
         """
         Create a fresh database connection every time.
         """
+        # Prefer Streamlit secrets when available, fall back to environment variables.
+        host = None
+        database = None
+        user = None
+        password = None
+
         try:
+            # Streamlit secrets (deployed apps) take precedence
+            if hasattr(st, 'secrets') and isinstance(st.secrets, dict):
+                host = st.secrets.get('NEON_HOST') or st.secrets.get('HOST')
+                database = st.secrets.get('NEON_DATABASE') or st.secrets.get('DATABASE')
+                user = st.secrets.get('NEON_USER') or st.secrets.get('USER')
+                password = st.secrets.get('NEON_PASSWORD') or st.secrets.get('PASSWORD')
+
+            # Fall back to environment variables
+            host = host or os.getenv('NEON_HOST')
+            database = database or os.getenv('NEON_DATABASE')
+            user = user or os.getenv('NEON_USER')
+            password = password or os.getenv('NEON_PASSWORD')
+
+            if not all([host, database, user, password]):
+                raise RuntimeError(
+                    'Database credentials not found. Set NEON_HOST, NEON_DATABASE, NEON_USER, NEON_PASSWORD '
+                    'as environment variables or add them to Streamlit secrets.'
+                )
+
             conn = psycopg2.connect(
-                host=os.getenv("NEON_HOST"),
-                database=os.getenv("NEON_DATABASE"),
-                user=os.getenv("NEON_USER"),
-                password=os.getenv("NEON_PASSWORD"),
-                sslmode="require",
-                connect_timeout=5
+                host=host,
+                database=database,
+                user=user,
+                password=password,
+                sslmode='require',
+                connect_timeout=5,
             )
             return conn
 
         except Exception as e:
-            st.error(f"❌ Database connection failed: {str(e)}")
-            return None
+            # Raise a runtime error so calling pages can catch and show a consistent message.
+            raise RuntimeError(f'Database connection failed: {str(e)}') from e
+
+    @staticmethod
+    def _read_sql_safe(query: str, params: list | None = None):
+        """Run a read query safely and return a DataFrame or empty DataFrame on error.
+
+        This centralizes connection handling so pages don't get NoneType cursor errors
+        when the database is unreachable (for example in deployments without secrets).
+        """
+        try:
+            conn = DatabaseManager.get_connection()
+        except Exception as e:
+            # Show a friendly message to the user and return an empty DataFrame
+            try:
+                st.error(f"❌ Database connection failed: {str(e)}")
+            except Exception:
+                pass
+            return pd.DataFrame()
+
+        if conn is None:
+            try:
+                st.error("❌ Database connection unavailable. Check configuration.")
+            except Exception:
+                pass
+            return pd.DataFrame()
+
+        try:
+            df = pd.read_sql(query, conn, params=params)
+            return df
+        except Exception:
+            try:
+                st.error("❌ Query failed. Please try again later.")
+            except Exception:
+                pass
+            return pd.DataFrame()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
     
     @staticmethod
@@ -151,37 +215,29 @@ class DatabaseManager:
     @staticmethod
     @st.cache_data(ttl=600)
     def get_distinct_drug_names():
-        conn = DatabaseManager.get_connection()
         query = "SELECT DISTINCT drug_name FROM drugs ORDER BY drug_name;"
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df["drug_name"].tolist() if not df.empty else []
 
     @staticmethod
     @st.cache_data(ttl=600)
     def get_distinct_therapeutic_categories():
-        conn = DatabaseManager.get_connection()
         query = "SELECT DISTINCT therapeutic_category FROM drugs ORDER BY therapeutic_category;"
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df["therapeutic_category"].tolist() if not df.empty else []
 
     @staticmethod
     @st.cache_data(ttl=600)
     def get_distinct_customer_names():
-        conn = DatabaseManager.get_connection()
         query = "SELECT DISTINCT customer_name FROM customers ORDER BY customer_name;"
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df["customer_name"].tolist() if not df.empty else []
 
     @staticmethod
     @st.cache_data(ttl=600)
     def get_distinct_years():
-        conn = DatabaseManager.get_connection()
         query = "SELECT DISTINCT EXTRACT(YEAR FROM CAST(transaction_date AS DATE))::INT AS year FROM transactions WHERE transaction_type = 'Sale' ORDER BY year DESC;"
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df["year"].tolist() if not df.empty else []
 
     @staticmethod
@@ -233,8 +289,7 @@ class DatabaseManager:
         query += " GROUP BY d.drug_id, d.drug_name, d.therapeutic_category, a.abc_class"
         query += " ORDER BY total_units DESC, total_revenue DESC LIMIT %s;"
         params.append(limit)
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params)
         return df
 
     @staticmethod
@@ -286,8 +341,7 @@ class DatabaseManager:
         query += " HAVING SUM(dt.total_value_inr) > 0"
         query += " ORDER BY total_units ASC, total_revenue ASC LIMIT %s;"
         params.append(limit)
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params)
         return df
 
     @staticmethod
@@ -331,8 +385,7 @@ class DatabaseManager:
             query += " AND CAST(dt.transaction_date AS DATE) <= %s"
             params.append(end_date)
         query += " GROUP BY month ORDER BY month ASC;"
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params)
         return df
 
     @staticmethod
@@ -376,8 +429,7 @@ class DatabaseManager:
             query += " AND CAST(dt.transaction_date AS DATE) <= %s"
             params.append(end_date)
         query += " GROUP BY month ORDER BY month ASC;"
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params)
         return df
 
     @staticmethod
@@ -461,8 +513,7 @@ class DatabaseManager:
             query += " AND CAST(transaction_date AS DATE) <= %s"
             params.append(end_date)
         query += " GROUP BY weekday, hour_bin, ordering ORDER BY ordering, hour_bin;"
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params)
         return df
 
     @staticmethod
@@ -492,8 +543,7 @@ class DatabaseManager:
         ORDER BY total_revenue DESC
         LIMIT {limit};
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
 
     # ============== REORDER MANAGEMENT (FILTERED + OPERATIONAL CENTER) ==============
@@ -577,9 +627,8 @@ class DatabaseManager:
         if drug_names:
             params.append(drug_names)
 
-        # Use pandas read_sql with params.
-        df = pd.read_sql(query, conn, params=params if params else None)
-        conn.close()
+        # Use safe read helper with params.
+        df = DatabaseManager._read_sql_safe(query, params=params if params else None)
 
         # Ensure consistent bins order.
         bin_order = ['0-30 Days', '31-60 Days', '61-90 Days', 'Safe Stock']
@@ -686,8 +735,7 @@ CASE
         """
 
 
-        df = pd.read_sql(query, conn, params=params if params else None)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params if params else None)
 
         if df.empty:
             return df
@@ -752,8 +800,7 @@ CASE
             drug_names, drug_names,
         ]
 
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params)
         return df
 
     @staticmethod
@@ -795,8 +842,7 @@ CASE
             params.append(end_date)
 
         query += " ORDER BY transaction_date DESC, transaction_id DESC;"
-        df = pd.read_sql(query, conn, params=params if params else None)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params if params else None)
         return df
 
     @staticmethod
@@ -839,8 +885,7 @@ CASE
             min_transactions,
         ]
 
-        df = pd.read_sql(query, conn, params=params)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=params)
         return df
 
     @staticmethod
@@ -871,8 +916,7 @@ CASE
         ORDER BY total_revenue ASC
         LIMIT {limit};
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
     
     @staticmethod
@@ -904,8 +948,7 @@ CASE
         FROM monthly_revenue
         ORDER BY month DESC;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
     
     @staticmethod
@@ -933,8 +976,7 @@ CASE
         FROM monthly_customers
         ORDER BY month DESC;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
     
     @staticmethod
@@ -956,8 +998,7 @@ CASE
         GROUP BY CAST(dt.transaction_date AS DATE)
         ORDER BY date ASC;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
     
     # ============== REORDER MANAGEMENT QUERIES ==============
@@ -1001,8 +1042,7 @@ CASE
           AND i.stock_status = 'Red'
         ORDER BY i.remaining_stock ASC, i.expiry_date ASC NULLS LAST;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
 
     @staticmethod
@@ -1028,8 +1068,7 @@ CASE
         GROUP BY d.therapeutic_category, expiry_bucket
         ORDER BY d.therapeutic_category, expiry_bucket;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
 
     @staticmethod
@@ -1069,8 +1108,7 @@ CASE
         END,
         i.remaining_stock ASC;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
 
     @staticmethod
@@ -1117,8 +1155,7 @@ CASE
                 ELSE 6
             END;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
 
     @staticmethod
@@ -1162,8 +1199,7 @@ CASE
             AND i.expiry_date <= CURRENT_DATE + INTERVAL '{days} days'
         ORDER BY i.expiry_date ASC, i.remaining_stock ASC;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
     
     # ============== DRUGS INVENTORY QUERIES ==============
@@ -1212,9 +1248,7 @@ CASE
             d.drug_name;
         """
 
-        df = pd.read_sql(query, conn)
-        conn.close()
-
+        df = DatabaseManager._read_sql_safe(query)
         return df
     
     
@@ -1242,8 +1276,7 @@ CASE
         ORDER BY unit_price_inr DESC;
         """
         pattern = f"%{generic_name}%"
-        df = pd.read_sql(query, conn, params=[pattern, pattern])
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=[pattern, pattern])
         return df
 
     @staticmethod
@@ -1263,8 +1296,7 @@ CASE
         FROM drugs
         ORDER BY drug_name;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
 
     @staticmethod
@@ -1295,8 +1327,7 @@ CASE
           )
         ORDER BY d.drug_name, d.strength;
         """
-        df = pd.read_sql(query, conn, params=[like_pattern, like_pattern])
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=[like_pattern, like_pattern])
         return df
 
     @staticmethod
@@ -1314,8 +1345,7 @@ CASE
         ORDER BY CAST(split_part(batch_id, '-', 3) AS INTEGER) DESC
         LIMIT 1;
         """
-        df = pd.read_sql(query, conn, params=[drug_id, f"{drug_id}-{snapshot_date}-%"])
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query, params=[drug_id, f"{drug_id}-{snapshot_date}-%"])
         if df.empty:
             return None
         return df.iloc[0, 0]
@@ -1420,7 +1450,6 @@ CASE
         GROUP BY a.abc_class
         ORDER BY a.abc_class ASC;
         """
-        df = pd.read_sql(query, conn)
-        conn.close()
+        df = DatabaseManager._read_sql_safe(query)
         return df
     
