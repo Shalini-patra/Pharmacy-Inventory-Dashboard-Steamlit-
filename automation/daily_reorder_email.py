@@ -63,6 +63,7 @@ def fetch_immediate_reorder_csv_dataset():
         JOIN drugs d ON i.drug_id = d.drug_id
         JOIN reorder_points r ON i.drug_id = r.drug_id
         WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
+          AND (i.expiry_date IS NULL OR i.expiry_date >= CURRENT_DATE)
           AND i.remaining_stock <= r.reorder_point
         ORDER BY d.drug_id ASC;
         """

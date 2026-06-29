@@ -7,6 +7,7 @@ from lib.theme import ThemeManager
 from lib.colors import ColorPalette
 from lib.ui_overrides import green_banner, kpi_card
 from lib.email_utils import EmailUtils
+from lib.reorder_page_utils import get_reorder_filter_options, get_reorder_download_dataset
 
 # Helper function for safe integer conversion
 def safe_int(val, default=0):
@@ -192,22 +193,16 @@ with st.sidebar:
     st.subheader("🔎 Filters")
     st.caption("Applies to Matrix and Action Table")
 
-    # Build filter option lists from DB (unfiltered lists)
-    try:
-        # Pull minimal inventory info for distinct values.
-        stock_df = DatabaseManager.get_inventory_heatmap_data()
-        all_categories = sorted(stock_df['therapeutic_category'].dropna().unique().tolist())
-        all_drug_ids = sorted(stock_df['drug_id'].dropna().unique().tolist())
-        all_drug_names = sorted(stock_df['drug_name'].dropna().unique().tolist())
-    except Exception:
-        all_categories = []
-        all_drug_ids = []
-        all_drug_names = []
+    filter_options = get_reorder_filter_options()
+    all_categories = filter_options.get('therapeutic_categories', [])
+    all_drug_ids = filter_options.get('drug_ids', [])
+    all_drug_names = filter_options.get('drug_names', [])
 
     therapeutic_category = st.multiselect(
         "Therapeutic Category",
         options=all_categories,
         default=[],
+        key="reorder_therapeutic_category",
         help="Select one or more categories to filter. Leave blank to include all categories.",
     )
 
@@ -215,6 +210,7 @@ with st.sidebar:
         "Drug ID",
         options=all_drug_ids,
         default=[],
+        key="reorder_drug_id",
         help="Select one or more drug IDs to filter. Leave blank to include all drugs.",
     )
 
@@ -222,13 +218,14 @@ with st.sidebar:
         "Drug Name",
         options=all_drug_names,
         default=[],
+        key="reorder_drug_name",
         help="Select one or more drug names to filter. Leave blank to include all drugs.",
     )
 
 # Convert to None when all selected.
-therapeutic_categories = therapeutic_category if len(therapeutic_category) != len(all_categories) else None
-filter_drug_ids = drug_id if len(drug_id) != len(all_drug_ids) else None
-filter_drug_names = drug_name if len(drug_name) != len(all_drug_names) else None
+therapeutic_categories = therapeutic_category if therapeutic_category else None
+filter_drug_ids = drug_id if drug_id else None
+filter_drug_names = drug_name if drug_name else None
 
 # =========================
 # Page Header
@@ -518,7 +515,7 @@ st.subheader("Reorder Email & Automation Center")
 
 imm_df = pd.DataFrame()
 try:
-    imm_df = DatabaseManager.get_immediate_reorder_csv_dataset(
+    imm_df = get_reorder_download_dataset(
         therapeutic_categories=therapeutic_categories,
         drug_ids=filter_drug_ids,
         drug_names=filter_drug_names,

@@ -699,13 +699,34 @@ class DatabaseManager:
                 d.therapeutic_category,
                 COALESCE(r.reorder_point, 0)::INT AS reorder_point,
                 COALESCE(r.suggested_reorder_qty, 0)::INT AS suggested_reorder_quantity,
+                COALESCE(r.forecasted_avg_daily_sales, 0)::NUMERIC AS forecasted_avg_daily_sales,
                 s.lead_time_days,
-                COALESCE(SUM(i.remaining_stock), 0)::INT AS remaining_quantity
+                SUM(CASE
+                    WHEN i.expiry_date IS NULL THEN i.remaining_stock
+                    WHEN i.expiry_date::date > CURRENT_DATE + INTERVAL '30 days' THEN i.remaining_stock
+                    ELSE 0
+                END)::INT AS eligible_remaining_quantity,
+                MAX(CASE
+                    WHEN i.expiry_date IS NULL THEN 1
+                    WHEN i.expiry_date::date > CURRENT_DATE + INTERVAL '90 days' THEN 1
+                    ELSE 0
+                END)::INT AS has_healthy_batch,
+                MAX(CASE
+                    WHEN i.expiry_date IS NULL THEN 1
+                    WHEN i.expiry_date::date > CURRENT_DATE + INTERVAL '30 days' THEN 1
+                    ELSE 0
+                END)::INT AS has_batch_after_buffer,
+                BOOL_AND(CASE
+                    WHEN i.expiry_date IS NULL THEN TRUE
+                    WHEN i.expiry_date::date > CURRENT_DATE + INTERVAL '30 days' THEN i.expiry_date::date <= CURRENT_DATE + INTERVAL '90 days'
+                    ELSE FALSE
+                END) AS all_eligible_within_90_days
             FROM inventory_snapshots i
             JOIN drugs d ON i.drug_id = d.drug_id
             JOIN reorder_points r ON i.drug_id = r.drug_id
             LEFT JOIN lead_times s ON i.drug_id = s.drug_id
             WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
+              AND i.remaining_stock > 0
             GROUP BY
                 d.drug_id,
                 d.drug_name,
@@ -715,20 +736,24 @@ class DatabaseManager:
                 d.therapeutic_category,
                 r.reorder_point,
                 r.suggested_reorder_qty,
+                r.forecasted_avg_daily_sales,
                 s.lead_time_days
         )
         SELECT
             CASE
-                WHEN b.reorder_point <= 0 THEN 'Safe'
-                WHEN b.remaining_quantity <= b.reorder_point THEN 'Immediate'
-                WHEN b.remaining_quantity <= (b.reorder_point * 1.25) AND b.remaining_quantity > b.reorder_point THEN 'Approaching'
-                ELSE 'Safe'
+                WHEN b.eligible_remaining_quantity <= b.reorder_point AND b.reorder_point > 0 AND b.has_batch_after_buffer = 0 THEN 'Immediate Reorder Needed'
+                WHEN (b.all_eligible_within_90_days IS TRUE AND b.has_healthy_batch = 0)
+                     OR (b.eligible_remaining_quantity - (b.forecasted_avg_daily_sales * 3) <= b.reorder_point AND b.has_healthy_batch = 0)
+                    THEN 'Approaching Reorder'
+                WHEN b.has_healthy_batch = 1 AND b.eligible_remaining_quantity > b.reorder_point AND b.eligible_remaining_quantity - (b.forecasted_avg_daily_sales * 3) > b.reorder_point THEN 'Safe Stock'
+                WHEN b.eligible_remaining_quantity > 0 THEN 'Approaching Reorder'
+                ELSE 'Immediate Reorder Needed'
             END AS stock_status_group,
 
             b.drug_id,
             b.drug_name,
             b.generic_name,
-            b.remaining_quantity,
+            b.eligible_remaining_quantity AS remaining_quantity,
             b.suggested_reorder_quantity,
             b.manufacturer_name,
             b.manufacturer_contact,
@@ -775,9 +800,9 @@ CASE
 
         # Map group to UI labels.
         df['stock_status'] = df['stock_status_group'].map({
-            'Immediate': 'Immediate Reorder Needed',
+            'Immediate Reorder Needed': 'Immediate Reorder Needed',
             'Approaching': 'Approaching Reorder',
-            'Safe': 'Safe Stock'
+            'Safe Stock': 'Safe Stock'
         })
 
         return df
@@ -809,6 +834,7 @@ CASE
             JOIN drugs d ON i.drug_id = d.drug_id
             JOIN reorder_points r ON i.drug_id = r.drug_id
             WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
+              AND (i.expiry_date IS NULL OR i.expiry_date >= CURRENT_DATE)
               AND i.remaining_stock <= r.reorder_point
         )
         SELECT
@@ -1073,6 +1099,7 @@ CASE
         JOIN lead_times s ON i.drug_id = s.drug_id
         WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
           AND i.stock_status = 'Red'
+          AND (i.expiry_date IS NULL OR i.expiry_date >= CURRENT_DATE)
         ORDER BY i.remaining_stock ASC, i.expiry_date ASC NULLS LAST;
         """
         df = DatabaseManager._read_sql_safe(query)
