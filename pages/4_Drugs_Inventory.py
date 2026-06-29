@@ -399,13 +399,23 @@ try:
                         snapshot_date=snapshot_date,
                         drug_id=selected_drug_id,
                         batch_id=batch_id,
+                        manufacturing_date=snapshot_date,
                         expiry_date=expiry_date,
                         remaining_stock=remaining_stock,
                         unit_cost_inr=unit_cost_inr,
                         stock_value_inr=stock_value_inr,
                     )
+                    DatabaseManager.insert_restock_transaction(
+                        transaction_id=f"RST{datetime.now().strftime('%Y%m%d%H%M%S')}",
+                        drug_id=selected_drug_id,
+                        batch_id=batch_id,
+                        transaction_date=snapshot_date,
+                        quantity=remaining_stock,
+                        unit_cost_inr=unit_cost_inr,
+                        unit_price_inr=unit_cost_inr,
+                    )
                     st.success(
-                        'Inventory updated successfully.\nNew inventory batch has been added and will be fully processed during the next scheduled ETL run.'
+                        'Inventory updated successfully.\nNew inventory batch and restock transaction have been added and will be fully processed during the next scheduled ETL run.'
                     )
                     st.experimental_rerun()
                 except Exception:

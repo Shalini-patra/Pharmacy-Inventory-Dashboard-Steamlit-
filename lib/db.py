@@ -157,10 +157,7 @@ class DatabaseManager:
                     'Database credentials not found. Set NEON_HOST, NEON_DATABASE, NEON_USER, NEON_PASSWORD '
                     'as environment variables or add them to Streamlit secrets.'
                 )
-            st.write("Host:", host)
-            st.write("Database:", database)
-            st.write("User:", user)
-            st.write("Password Exists:", password is not None)
+            
             conn = psycopg2.connect(
                 host=host,
                 database=database,
@@ -1277,7 +1274,7 @@ CASE
         LEFT JOIN abc_analysis a
             ON i.drug_id = a.drug_id
 
-        WHERE i.snapshot_date = CURRENT_DATE
+        WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
 
         ORDER BY
             d.therapeutic_category,
@@ -1391,6 +1388,7 @@ CASE
         snapshot_date,
         drug_id: str,
         batch_id: str,
+        manufacturing_date,
         expiry_date,
         remaining_stock: int,
         unit_cost_inr: float,
@@ -1406,6 +1404,7 @@ CASE
             snapshot_date,
             drug_id,
             batch_id,
+            manufacturing_date,
             expiry_date,
             remaining_stock,
             unit_cost_inr,
@@ -1432,6 +1431,7 @@ CASE
             snapshot_date,
             drug_id,
             batch_id,
+            manufacturing_date,
             expiry_date,
             remaining_stock,
             unit_cost_inr,
@@ -1463,9 +1463,87 @@ CASE
             raise RuntimeError("Failed to insert inventory update. Please try again.") from e
         finally:
             conn.close()
+
+    @staticmethod
+    def insert_restock_transaction(
+        transaction_id: str,
+        drug_id: str,
+        batch_id: str,
+        transaction_date,
+        quantity: int,
+        unit_cost_inr: float,
+        unit_price_inr: float,
+        customer_id: int | None = None,
+    ) -> bool:
+        """Insert a Restock transaction linked to the new batch."""
+        conn = DatabaseManager.get_connection()
+        if conn is None:
+            raise RuntimeError("Database connection failed.")
+
+        query = """
+        INSERT INTO transactions (
+            transaction_id,
+            drug_id,
+            customer_id,
+            quantity,
+            unit_price_inr,
+            unit_cost_inr,
+            total_value_inr,
+            transaction_date,
+            transaction_type,
+            batch_id
+        ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s);
+        """
+
+        params = [
+            transaction_id,
+            drug_id,
+            customer_id,
+            quantity,
+            unit_price_inr,
+            unit_cost_inr,
+            round(quantity * unit_price_inr, 2),
+            transaction_date,
+            'Restock',
+            batch_id,
+        ]
+
+        try:
+            with conn.cursor() as cursor:
+                cursor.execute(query, params)
+            conn.commit()
+            return True
+        except Exception as e:
+            conn.rollback()
+            raise RuntimeError("Failed to insert restock transaction. Please try again.") from e
+        finally:
+            conn.close()
     
     # ============== ABC ANALYSIS QUERIES ==============
     
+    @staticmethod
+    @st.cache_data(ttl=300)
+    def get_inventory_heatmap_data():
+        """Get current inventory data with drug and category info for heatmap and filters.
+        
+        Returns DataFrame with therapeutic_category, drug_id, drug_name for building filter options.
+        """
+        conn = DatabaseManager.get_connection()
+        query = """
+        SELECT DISTINCT
+            d.drug_id,
+            d.drug_name,
+            d.therapeutic_category,
+            i.remaining_stock,
+            i.expiry_date
+        FROM inventory_snapshots i
+        JOIN drugs d ON i.drug_id = d.drug_id
+        WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
+        ORDER BY d.therapeutic_category, d.drug_name;
+        """
+        df = DatabaseManager._read_sql_safe(query)
+        return df
+
     @staticmethod
     @st.cache_data(ttl=600)
     def get_abc_analysis():
@@ -1482,7 +1560,7 @@ CASE
         FROM abc_analysis a
         JOIN drugs d ON a.drug_id = d.drug_id
         LEFT JOIN inventory_snapshots i ON a.drug_id = i.drug_id 
-            AND i.snapshot_date = CURRENT_DATE
+            AND CAST(i.snapshot_date AS DATE) = CURRENT_DATE
         GROUP BY a.abc_class
         ORDER BY a.abc_class ASC;
         """

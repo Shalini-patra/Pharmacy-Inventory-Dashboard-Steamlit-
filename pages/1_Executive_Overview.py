@@ -356,7 +356,7 @@ if not heatmap_df.empty:
             tickmode="array",
             tickvals=[i + 0.5 for i in range(len(pivot.columns))],
             ticktext=list(pivot.columns),
-            tickangle=-45,
+            tickangle=0,
             showgrid=False,
             zeroline=False,
         ),

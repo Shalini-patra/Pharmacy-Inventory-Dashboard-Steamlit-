@@ -48,14 +48,27 @@ try:
     # Format labels
     # -----------------------------
     def format_axis(v):
-        v = abs(v)
+        # Handle NaN values properly to prevent crashes
+        try:
+            if pd.isna(v):
+                return "0"
+        except (TypeError, ValueError):
+            pass
+        
+        try:
+            v = abs(v)
+        except (TypeError, ValueError):
+            return "0"
 
         if v >= 1_000_000:
             return f"{v/1_000_000:.1f}M"
         elif v >= 1000:
             return f"{v/1000:.0f}K"
         else:
-            return f"{int(v)}"
+            try:
+                return f"{int(v)}"
+            except (ValueError, TypeError):
+                return "0"
 
     ticktext = [format_axis(v) for v in tickvals]
 

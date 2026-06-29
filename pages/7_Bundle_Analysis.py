@@ -17,6 +17,16 @@ from lib.ui_overrides import green_banner, kpi_card
 from lib.session_state import SessionStateManager
 from lib.calculations import AdvancedCalculations
 
+# Helper function for safe integer conversion
+def safe_int(val, default=0):
+    """Safely convert value to integer, handling NaN and other errors."""
+    try:
+        if pd.isna(val):
+            return default
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
 # ============== PAGE CONFIG ==============
 st.set_page_config(
     page_title="Bundle Analysis",
@@ -223,7 +233,7 @@ try:
             with col3:
                 kpi_card(
                     label="Co-Purchases",
-                    value=f"{int(selected_bundle_row['co_occurrence_count'])}",
+                    value=f"{safe_int(selected_bundle_row['co_occurrence_count'])}",
                     tooltip_pairs=[
                         ("What it measures", "Number of times this bundle was purchased together."),
                         ("Why it matters", "Reflects the bundle's real market traction."),

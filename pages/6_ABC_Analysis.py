@@ -15,6 +15,16 @@ palette = ThemeManager.get_palette()
 colors = ColorPalette.get_chart_colors()
 abc_colors = ColorPalette.get_abc_colors()
 
+# Helper function for safe integer conversion
+def safe_int(val, default=0):
+    """Safely convert value to integer, handling NaN and other errors."""
+    try:
+        if pd.isna(val):
+            return default
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
 green_banner("📈 ABC Classification Analysis")
 
 # ============== ABC INFORMATION ==============
@@ -59,7 +69,7 @@ try:
             with col1:
                 kpi_card(
                     label=f"Class {row['abc_class']}",
-                    value=f"{int(row['num_drugs'])} drugs",
+                    value=f"{safe_int(row['num_drugs'])} drugs",
                     tooltip_pairs=[
                         ("What it measures", "Number of drugs in this ABC classification."),
                         ("Why it matters", "Helps prioritize inventory control based on revenue impact."),
@@ -79,7 +89,7 @@ try:
             with col3:
                 kpi_card(
                     label="Avg Shelf Life",
-                    value=f"{int(row['avg_shelf_life'])} days",
+                    value=f"{safe_int(row['avg_shelf_life'])} days",
                     tooltip_pairs=[
                         ("What it measures", "Average remaining shelf life for drugs in this category."),
                         ("Why it matters", "Supports expiry risk management and replenishment planning."),
@@ -89,7 +99,7 @@ try:
             with col4:
                 kpi_card(
                     label="Needing Reorder",
-                    value=f"{int(row['drugs_needing_reorder'])}",
+                    value=f"{safe_int(row['drugs_needing_reorder'])}",
                     tooltip_pairs=[
                         ("What it measures", "Number of drugs in this category currently needing reorder."),
                         ("Why it matters", "Highlights inventory risk for critical items."),

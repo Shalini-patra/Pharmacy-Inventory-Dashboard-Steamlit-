@@ -8,6 +8,15 @@ from lib.colors import ColorPalette
 from lib.ui_overrides import green_banner, kpi_card
 from lib.email_utils import EmailUtils
 
+# Helper function for safe integer conversion
+def safe_int(val, default=0):
+    """Safely convert value to integer, handling NaN and other errors."""
+    try:
+        if pd.isna(val):
+            return default
+        return int(val)
+    except (ValueError, TypeError):
+        return default
 
 st.set_page_config(
     page_title="Reorder Management",
@@ -486,8 +495,8 @@ try:
                 f"Drug ID: {sel_row['Drug ID']}\n"
                 f"Drug Name: {sel_row['Drug Name']}\n"
                 f"Generic Name: {sel_row['Generic Name']}\n"
-                f"Remaining Quantity: {int(sel_row['Remaining Quantity'])}\n"
-                f"Suggested Reorder Quantity: {int(sel_row['Suggested Reorder Quantity'])}\n"
+                f"Remaining Quantity: {safe_int(sel_row['Remaining Quantity'])}\n"
+                f"Suggested Reorder Quantity: {safe_int(sel_row['Suggested Reorder Quantity'])}\n"
                 f"Manufacturer Name: {sel_row['Manufacturer Name']}\n"
                 f"Manufacturer Contact: {sel_row['Manufacturer Contact']}\n"
                 f"Stock Status: {sel_row['Stock Status']}"
