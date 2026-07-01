@@ -30,11 +30,10 @@ class ColorPalette:
 
     @staticmethod
     def get_abc_colors():
-        # Keep existing intent (A/B/C distinct), but map into spec green family where possible.
         return {
             'A': '#FF6B6B',
-            'B': '#4ECDC4',
-            'C': '#95E1D3',
+            'B': '#FFA940',
+            'C': '#5DD27D',
         }
 
 

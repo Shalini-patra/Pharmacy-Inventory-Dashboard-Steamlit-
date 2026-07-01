@@ -1647,7 +1647,46 @@ class DatabaseManager:
         return df
 
     @staticmethod
-    @st.cache_data(ttl=600)
+    @st.cache_data(ttl=300)
+    def get_latest_inventory_snapshot_date():
+        """Return the latest inventory snapshot date for branding and analytics."""
+        conn = DatabaseManager.get_connection()
+        query = """
+        SELECT MAX(CAST(snapshot_date AS DATE)) AS latest_snapshot_date
+        FROM inventory_snapshots;
+        """
+        df = DatabaseManager._read_sql_safe(query)
+        return df
+
+    @staticmethod
+    @st.cache_data(ttl=300)
+    def get_abc_class_details(abc_class: str):
+        """Return detailed drug-level ABC class information."""
+        conn = DatabaseManager.get_connection()
+        query = """
+        SELECT
+            d.drug_id,
+            d.drug_name,
+            d.generic_name,
+            d.therapeutic_category,
+            a.total_revenue::NUMERIC AS revenue,
+            ROUND((a.total_revenue / NULLIF((SELECT SUM(total_revenue) FROM abc_analysis WHERE abc_class = %s), 0) * 100)::NUMERIC, 2) AS revenue_share_pct,
+            a.abc_class,
+            COALESCE(i.remaining_stock, 0)::INT AS remaining_stock,
+            COALESCE(r.suggested_reorder_qty, 0)::INT AS suggested_reorder_quantity
+        FROM abc_analysis a
+        JOIN drugs d ON a.drug_id = d.drug_id
+        LEFT JOIN inventory_snapshots i ON a.drug_id = i.drug_id
+            AND CAST(i.snapshot_date AS DATE) = (
+                SELECT MAX(CAST(snapshot_date AS DATE)) FROM inventory_snapshots
+            )
+        LEFT JOIN reorder_points r ON a.drug_id = r.drug_id
+        WHERE a.abc_class = %s
+        ORDER BY a.total_revenue DESC;
+        """
+        df = DatabaseManager._read_sql_safe(query, params=(abc_class, abc_class))
+        return df
+
     def get_abc_analysis():
         """Get ABC classification with metrics."""
         conn = DatabaseManager.get_connection()
