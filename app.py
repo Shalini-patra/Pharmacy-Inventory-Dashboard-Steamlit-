@@ -242,7 +242,10 @@ try:
     # Operational (drug-level SUM) triage to keep homepage consistent with Reorder Management.
     try:
         action_rows = DatabaseManager.get_reorder_action_rows()
-        num_reorder = int((action_rows['stock_status'] == 'Immediate Reorder Needed').sum()) if action_rows is not None and not action_rows.empty else 0
+        if action_rows is not None and not action_rows.empty and 'stock_status' in action_rows.columns:
+            num_reorder = int((action_rows['stock_status'] == 'Immediate Reorder Needed').sum())
+        else:
+            num_reorder = 0
     except Exception:
         num_reorder = 0
     

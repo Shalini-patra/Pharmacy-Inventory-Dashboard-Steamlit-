@@ -531,34 +531,34 @@ manual_cols = st.columns(3)
 
 # ACTION 1: Send Reorder Email
 with manual_cols[0]:
-    if st.button("📧 Send Reorder Email", disabled=imm_df.empty):
-        try:
-            EmailUtils.send_reorder_email_with_csv(
-                csv_bytes=csv_bytes,
-                filename=f"reorder_list_immediate_{datetime.now().strftime('%Y%m%d')}.csv",
-                subject="Pharmacy Reorder Alert",
-                body_text=(
-                    "These drugs need to be reordered.\n\n"
-                    "Please find the attached CSV file containing reorder details.\n\n"
-                    "Generated automatically by the Pharmacy Smart Inventory System."
-                ),
-            )
-            st.success("✅ Reorder email sent successfully.")
-        except Exception as e:
-            st.error(f"❌ Failed to send reorder email: {e}")
+    if st.button("📧 Send Reorder Email"):
+        if imm_df.empty:
+            st.info("No immediate reorder rows are available for the current filters yet.")
+        else:
+            try:
+                EmailUtils.send_reorder_email_with_csv(
+                    csv_bytes=csv_bytes,
+                    filename=f"reorder_list_immediate_{datetime.now().strftime('%Y%m%d')}.csv",
+                    subject="Pharmacy Reorder Alert",
+                    body_text=(
+                        "These drugs need to be reordered.\n\n"
+                        "Please find the attached CSV file containing reorder details.\n\n"
+                        "Generated automatically by the Pharmacy Smart Inventory System."
+                    ),
+                )
+                st.success("✅ Reorder email sent successfully.")
+            except Exception as e:
+                st.error(f"❌ Failed to send reorder email: {e}")
 
 
 # ACTION 2: Download Reorder List
 with manual_cols[1]:
-    if not imm_df.empty:
-        st.download_button(
-            label="⬇ Download Reorder List",
-            data=csv_bytes,
-            file_name=f"reorder_list_immediate_{datetime.now().strftime('%Y%m%d')}.csv",
-            mime="text/csv",
-        )
-    else:
-        st.button("⬇ Download Reorder List", disabled=True)
+    st.download_button(
+        label="⬇ Download Reorder List",
+        data=csv_bytes,
+        file_name=f"reorder_list_immediate_{datetime.now().strftime('%Y%m%d')}.csv",
+        mime="text/csv",
+    )
 
 # ACTION 3: Automated Daily Reorder Email (separate automation script)
 with manual_cols[2]:

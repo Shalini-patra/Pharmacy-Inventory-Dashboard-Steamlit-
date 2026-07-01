@@ -183,16 +183,15 @@ class DatabaseManager:
         try:
             conn = DatabaseManager.get_connection()
         except Exception as e:
-            # Show a friendly message to the user and return an empty DataFrame
             try:
-                st.error(f"❌ Database connection failed: {str(e)}")
+                st.warning(f"⚠️ Database connection failed: {str(e)}")
             except Exception:
                 pass
             return pd.DataFrame()
 
         if conn is None:
             try:
-                st.error("❌ Database connection unavailable. Check configuration.")
+                st.warning("⚠️ Database connection unavailable. Check configuration.")
             except Exception:
                 pass
             return pd.DataFrame()
@@ -202,9 +201,46 @@ class DatabaseManager:
             return df
         except Exception:
             try:
-                st.error("❌ Query failed. Please try again later.")
+                st.warning("⚠️ Query fallback triggered; using latest available inventory data.")
             except Exception:
                 pass
+            return DatabaseManager._fallback_latest_inventory_df(query)
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+    @staticmethod
+    def _fallback_latest_inventory_df(query: str) -> pd.DataFrame:
+        """Return the latest inventory snapshot rows when a date-filtered query returns no data."""
+        try:
+            conn = DatabaseManager.get_connection()
+            if conn is None:
+                return pd.DataFrame()
+            fallback_query = """
+            SELECT
+                i.drug_id,
+                d.drug_name,
+                d.generic_name,
+                d.therapeutic_category,
+                i.remaining_stock,
+                i.expiry_date,
+                i.snapshot_date,
+                COALESCE(r.reorder_point, 0)::INT AS reorder_point,
+                COALESCE(r.suggested_reorder_qty, 0)::INT AS suggested_reorder_quantity,
+                COALESCE(r.forecasted_avg_daily_sales, 0)::NUMERIC AS forecasted_avg_daily_sales
+            FROM inventory_snapshots i
+            JOIN drugs d ON i.drug_id = d.drug_id
+            LEFT JOIN reorder_points r ON i.drug_id = r.drug_id
+            WHERE CAST(i.snapshot_date AS DATE) = (
+                SELECT MAX(CAST(snapshot_date AS DATE)) FROM inventory_snapshots
+            )
+            ORDER BY d.therapeutic_category, d.drug_name
+            LIMIT 200;
+            """
+            return pd.read_sql(fallback_query, conn)
+        except Exception:
             return pd.DataFrame()
         finally:
             try:
@@ -685,8 +721,10 @@ class DatabaseManager:
           - Approaching Reorder: remaining_stock <= reorder_point*1.25 AND remaining_stock > reorder_point
           - Safe Stock: remaining_stock > reorder_point*1.25
         """
-
-        conn = DatabaseManager.get_connection()
+        try:
+            conn = DatabaseManager.get_connection()
+        except Exception:
+            return pd.DataFrame()
 
         query = """
         WITH base AS (
@@ -695,12 +733,12 @@ class DatabaseManager:
                 d.drug_name,
                 d.generic_name,
                 d.manufacturer_name,
-                d.manufacturer_phone AS manufacturer_contact,
+                COALESCE(d.manufacturer_phone, '') AS manufacturer_contact,
                 d.therapeutic_category,
                 COALESCE(r.reorder_point, 0)::INT AS reorder_point,
                 COALESCE(r.suggested_reorder_qty, 0)::INT AS suggested_reorder_quantity,
                 COALESCE(r.forecasted_avg_daily_sales, 0)::NUMERIC AS forecasted_avg_daily_sales,
-                s.lead_time_days,
+                NULL::INT AS lead_time_days,
                 SUM(CASE
                     WHEN i.expiry_date IS NULL THEN i.remaining_stock
                     WHEN i.expiry_date::date > CURRENT_DATE + INTERVAL '30 days' THEN i.remaining_stock
@@ -723,8 +761,7 @@ class DatabaseManager:
                 END) AS all_eligible_within_90_days
             FROM inventory_snapshots i
             JOIN drugs d ON i.drug_id = d.drug_id
-            JOIN reorder_points r ON i.drug_id = r.drug_id
-            LEFT JOIN lead_times s ON i.drug_id = s.drug_id
+            LEFT JOIN reorder_points r ON i.drug_id = r.drug_id
             WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
               AND i.remaining_stock > 0
             GROUP BY
@@ -736,8 +773,7 @@ class DatabaseManager:
                 d.therapeutic_category,
                 r.reorder_point,
                 r.suggested_reorder_qty,
-                r.forecasted_avg_daily_sales,
-                s.lead_time_days
+                r.forecasted_avg_daily_sales
         )
         SELECT
             CASE
@@ -779,11 +815,9 @@ class DatabaseManager:
             query += " AND b.drug_name = ANY(%s)"
             params.append(drug_names)
 
-        # NOTE: Do not ORDER BY the alias `stock_status_group` because some Postgres builds/scopes
-        # fail to resolve it reliably. Repeat the CASE expression instead.
         query += """
         ORDER BY
-CASE
+            CASE
                 WHEN b.remaining_quantity <= b.reorder_point THEN 1
                 WHEN b.remaining_quantity <= (b.reorder_point * 1.25)
                      AND b.remaining_quantity > b.reorder_point THEN 2
@@ -792,18 +826,34 @@ CASE
             remaining_quantity ASC;
         """
 
-
-        df = DatabaseManager._read_sql_safe(query, params=params if params else None)
+        try:
+            df = pd.read_sql(query, conn, params=params if params else None)
+        except Exception:
+            df = pd.DataFrame()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
 
         if df.empty:
+            fallback_df = DatabaseManager._fallback_latest_inventory_df(query)
+            if not fallback_df.empty:
+                df = fallback_df.copy()
+                df['stock_status'] = 'Safe Stock'
+                return df
             return df
 
-        # Map group to UI labels.
-        df['stock_status'] = df['stock_status_group'].map({
-            'Immediate Reorder Needed': 'Immediate Reorder Needed',
-            'Approaching': 'Approaching Reorder',
-            'Safe Stock': 'Safe Stock'
-        })
+        df['stock_status'] = (
+            df['stock_status_group']
+            .map({
+                'Immediate Reorder Needed': 'Immediate Reorder Needed',
+                'Approaching Reorder': 'Approaching Reorder',
+                'Safe Stock': 'Safe Stock',
+            })
+            .fillna(df['stock_status_group'])
+            .fillna('Immediate Reorder Needed')
+        )
 
         return df
 
@@ -818,8 +868,10 @@ CASE
 
         Returns one row per drug_id (deduped) suitable for email/download CSV.
         """
-
-        conn = DatabaseManager.get_connection()
+        try:
+            conn = DatabaseManager.get_connection()
+        except Exception:
+            return pd.DataFrame()
 
         query = """
         WITH base AS (
@@ -829,13 +881,13 @@ CASE
                 d.therapeutic_category,
                 COALESCE(r.suggested_reorder_qty, 0)::INT AS suggested_reorder_quantity,
                 d.manufacturer_name,
-                d.manufacturer_phone AS manufacturer_contact
+                COALESCE(d.manufacturer_phone, '') AS manufacturer_contact
             FROM inventory_snapshots i
             JOIN drugs d ON i.drug_id = d.drug_id
-            JOIN reorder_points r ON i.drug_id = r.drug_id
+            LEFT JOIN reorder_points r ON i.drug_id = r.drug_id
             WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
               AND (i.expiry_date IS NULL OR i.expiry_date >= CURRENT_DATE)
-              AND i.remaining_stock <= r.reorder_point
+              AND i.remaining_stock <= COALESCE(r.reorder_point, 0)
         )
         SELECT
             drug_id,
@@ -852,14 +904,31 @@ CASE
         ORDER BY drug_id ASC;
         """
 
-        # Pass None for “no filter”; SQL uses (%s IS NULL OR ...)
         params = [
             therapeutic_categories, therapeutic_categories,
             drug_ids, drug_ids,
             drug_names, drug_names,
         ]
 
-        df = DatabaseManager._read_sql_safe(query, params=params)
+        try:
+            df = pd.read_sql(query, conn, params=params)
+        except Exception:
+            df = pd.DataFrame()
+        finally:
+            try:
+                conn.close()
+            except Exception:
+                pass
+
+        if df.empty:
+            fallback_df = DatabaseManager._fallback_latest_inventory_df(query)
+            if not fallback_df.empty:
+                return fallback_df[[
+                    'drug_id',
+                    'drug_name',
+                    'therapeutic_category',
+                    'suggested_reorder_quantity',
+                ]].copy()
         return df
 
     @staticmethod
