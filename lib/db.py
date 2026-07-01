@@ -218,18 +218,23 @@ class DatabaseManager:
             conn = DatabaseManager.get_connection()
             if conn is None:
                 return pd.DataFrame()
+            # Provide a fallback result shaped to match the reorder queries' expected columns.
             fallback_query = """
             SELECT
-                i.drug_id,
+                d.drug_id,
                 d.drug_name,
                 d.generic_name,
+                d.manufacturer_name,
+                d.manufacturer_phone AS manufacturer_contact,
                 d.therapeutic_category,
-                i.remaining_stock,
-                i.expiry_date,
-                i.snapshot_date,
                 COALESCE(r.reorder_point, 0)::INT AS reorder_point,
                 COALESCE(r.suggested_reorder_qty, 0)::INT AS suggested_reorder_quantity,
-                COALESCE(r.forecasted_avg_daily_sales, 0)::NUMERIC AS forecasted_avg_daily_sales
+                COALESCE(r.forecasted_avg_daily_sales, 0)::NUMERIC AS forecasted_avg_daily_sales,
+                NULL::INT AS lead_time_days,
+                i.remaining_stock AS remaining_quantity,
+                i.expiry_date,
+                i.snapshot_date,
+                'Safe Stock' AS stock_status_group
             FROM inventory_snapshots i
             JOIN drugs d ON i.drug_id = d.drug_id
             LEFT JOIN reorder_points r ON i.drug_id = r.drug_id
@@ -239,6 +244,7 @@ class DatabaseManager:
             ORDER BY d.therapeutic_category, d.drug_name
             LIMIT 200;
             """
+
             return pd.read_sql(fallback_query, conn)
         except Exception:
             return pd.DataFrame()
