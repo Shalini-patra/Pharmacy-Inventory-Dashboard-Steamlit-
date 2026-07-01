@@ -218,7 +218,17 @@ def main():
 
     try:
         abc_data = DatabaseManager.get_abc_analysis()
-        snapshot_df = DatabaseManager.get_latest_inventory_snapshot_date()
+
+        # Robustly obtain latest snapshot date: prefer explicit helper if available,
+        # otherwise run a safe SQL fallback so deployments with different DB helper
+        # signatures won't crash the page.
+        latest_snapshot_fn = getattr(DatabaseManager, 'get_latest_inventory_snapshot_date', None)
+        if callable(latest_snapshot_fn):
+            snapshot_df = latest_snapshot_fn()
+        else:
+            snapshot_df = DatabaseManager._read_sql_safe(
+                "SELECT MAX(CAST(snapshot_date AS DATE)) AS latest_snapshot_date FROM inventory_snapshots;"
+            )
     except Exception as exc:
         st.error(f"❌ Failed to load ABC analysis data: {str(exc)}")
         return
