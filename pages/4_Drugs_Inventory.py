@@ -5,7 +5,7 @@ from datetime import datetime
 from lib.db import DatabaseManager
 from lib.theme import ThemeManager
 from lib.colors import ColorPalette
-from lib.ui_overrides import green_banner
+from lib.ui_overrides import green_banner, kpi_card
 import plotly.graph_objects as go
 st.set_page_config(page_title="Drugs Inventory", page_icon="💊", layout="wide")
 ThemeManager.init_theme()
@@ -58,6 +58,50 @@ try:
         st.info("No matching drugs were found for the entered name or generic name.")
 
     if len(inventory_data) > 0:
+        total_stock = int(inventory_data['remaining_stock'].fillna(0).sum())
+        low_stock_count = int((inventory_data['stock_status'].isin(['Yellow', 'Red'])).sum())
+        safe_stock_count = int((inventory_data['stock_status'] == 'Safe').sum())
+
+        kpi_cols = st.columns(3, gap='small')
+        with kpi_cols[0]:
+            kpi_card(
+                label="Total Stock",
+                value=f"{total_stock:,.0f}",
+                tooltip_pairs=[
+                    ("What it measures", "Combined remaining stock across all tracked drugs."),
+                    ("Why it matters", "Provides a quick view of inventory volume."),
+                ],
+                icon="📦",
+                icon_color="positive",
+                subtitle="Current availability",
+            )
+        with kpi_cols[1]:
+            kpi_card(
+                label="Low Stock Items",
+                value=f"{low_stock_count}",
+                tooltip_pairs=[
+                    ("What it measures", "Drugs currently marked as Yellow or Red."),
+                    ("Why it matters", "Signals inventory risk and the need for attention."),
+                ],
+                icon="⚠️",
+                icon_color="warning",
+                subtitle="At-risk inventory",
+            )
+        with kpi_cols[2]:
+            kpi_card(
+                label="Safe Stock Items",
+                value=f"{safe_stock_count}",
+                tooltip_pairs=[
+                    ("What it measures", "Drugs currently in the Safe state."),
+                    ("Why it matters", "Shows how much inventory is operating within normal thresholds."),
+                ],
+                icon="✅",
+                icon_color="info",
+                subtitle="Healthy inventory",
+            )
+
+        st.markdown("<div style='margin-top:8px;'></div>", unsafe_allow_html=True)
+
         # Create heatmap
         
         if len(inventory_data) > 0:

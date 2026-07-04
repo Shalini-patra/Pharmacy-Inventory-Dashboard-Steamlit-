@@ -5,7 +5,7 @@ from datetime import datetime, timedelta
 from lib.db import DatabaseManager
 from lib.theme import ThemeManager
 from lib.colors import ColorPalette
-from lib.ui_overrides import green_banner
+from lib.ui_overrides import green_banner, kpi_card
 from plotly.subplots import make_subplots
 import numpy as np
 st.set_page_config(page_title="Transactions & Revenue", page_icon="💰", layout="wide")
@@ -17,6 +17,57 @@ palette = ThemeManager.get_palette()
 colors = ColorPalette.get_chart_colors()
 
 green_banner("💰 Transactions & Revenue")
+
+try:
+    overall_metrics = DatabaseManager.get_profit_trend(days=365)
+    if not overall_metrics.empty:
+        revenue_total = float(overall_metrics['revenue'].sum()) if 'revenue' in overall_metrics.columns else 0
+        profit_total = float(overall_metrics['profit'].sum()) if 'profit' in overall_metrics.columns else 0
+        transaction_total = int(len(overall_metrics)) if overall_metrics is not None else 0
+        kpi_row = st.columns(3, gap='small')
+        with kpi_row[0]:
+            kpi_card(
+                label="Revenue",
+                value=f"₹{revenue_total:,.0f}",
+                tooltip_pairs=[
+                    ("What it measures", "Total revenue captured in the recent trend window."),
+                    ("Why it matters", "Shows business income performance."),
+                ],
+                delta="Last 365 days",
+                icon="💰",
+                icon_color="positive",
+                subtitle="Income generated",
+            )
+        with kpi_row[1]:
+            kpi_card(
+                label="Profit",
+                value=f"₹{profit_total:,.0f}",
+                tooltip_pairs=[
+                    ("What it measures", "Net profit from recent transactions."),
+                    ("Why it matters", "Indicates profitability and efficiency."),
+                ],
+                delta="Last 365 days",
+                icon="₹",
+                icon_color="info",
+                subtitle="Net profitability",
+            )
+        with kpi_row[2]:
+            kpi_card(
+                label="Transactions",
+                value=f"{transaction_total:,}",
+                tooltip_pairs=[
+                    ("What it measures", "Number of transaction rows in the trend window."),
+                    ("Why it matters", "Reflects overall activity and demand."),
+                ],
+                delta="Recent activity",
+                icon="🧾",
+                icon_color="warning",
+                subtitle="Transaction count",
+            )
+except Exception:
+    pass
+
+st.markdown("<div style='margin-top:12px;'></div>", unsafe_allow_html=True)
 
 # ============== MONTHLY REVENUE BREAKDOWN ==============
 try:

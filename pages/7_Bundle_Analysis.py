@@ -146,12 +146,15 @@ try:
             strongest_bundle = bundle_data.iloc[0]
             kpi_card(
                 label="Strongest Bundle",
-                value=f"{strongest_bundle['drug_1_name'][:20]} +<br>{strongest_bundle['drug_2_name'][:20]}",
+                value=f"{strongest_bundle['drug_1_name'][:20]} + {strongest_bundle['drug_2_name'][:20]}",
                 tooltip_pairs=[
                     ("What it measures", "The top drug pair by co-purchase support percentage."),
                     ("Why it matters", "Reveals the most valuable bundle opportunity for promotions."),
                 ],
                 delta=f"{strongest_bundle['support_pct']:.2f}% support",
+                icon="🔗",
+                icon_color="positive",
+                subtitle="Top cross-sell pair",
             )
         
         with col2:
@@ -164,6 +167,9 @@ try:
                     ("Why it matters", "Indicates overall bundle purchase strength."),
                 ],
                 delta=f"across {len(bundle_data)} pairs",
+                icon="📊",
+                icon_color="info",
+                subtitle="Average bundle strength",
             )
         
         with col3:
@@ -176,6 +182,9 @@ try:
                     ("Why it matters", "Highlights pairs worth promoting together."),
                 ],
                 delta="(>5% support)",
+                icon="⭐",
+                icon_color="warning",
+                subtitle="High-opportunity bundles",
             )
         
         st.divider()
@@ -218,6 +227,9 @@ try:
                         ("What it measures", "Primary drug in the selected bundle."),
                         ("Why it matters", "Helps identify the anchor product in the pair."),
                     ],
+                    icon="💊",
+                    icon_color="positive",
+                    subtitle="Primary product",
                 )
             
             with col2:
@@ -228,6 +240,9 @@ try:
                         ("What it measures", "Complementary drug in the selected bundle."),
                         ("Why it matters", "Shows the paired product recommended together."),
                     ],
+                    icon="🧩",
+                    icon_color="warning",
+                    subtitle="Companion product",
                 )
             
             with col3:
@@ -239,6 +254,9 @@ try:
                         ("Why it matters", "Reflects the bundle's real market traction."),
                     ],
                     delta="times (90 days)",
+                    icon="🛒",
+                    icon_color="info",
+                    subtitle="Observed bundle frequency",
                 )
             
             with col4:
@@ -250,6 +268,9 @@ try:
                         ("Why it matters", "Indicates how common this pair is in customer purchases."),
                     ],
                     delta="of all transactions",
+                    icon="📈",
+                    icon_color="warning",
+                    subtitle="Bundle prevalence",
                 )
             
             # ============== BUNDLE RECOMMENDATION ==============

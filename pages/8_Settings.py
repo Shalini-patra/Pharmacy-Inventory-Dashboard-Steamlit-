@@ -21,7 +21,7 @@ from lib.theme import ThemeManager
 from lib.colors import ColorPalette
 from lib.session_state import SessionStateManager
 from lib.alerts import AlertManager
-from lib.ui_overrides import green_banner
+from lib.ui_overrides import green_banner, kpi_card
 from datetime import datetime
 import pandas as pd
 
@@ -91,7 +91,17 @@ with settings_tabs[0]:
                 num_drugs = cursor.fetchone()[0]
                 cursor.close()
                 
-                st.metric("Total Drugs", num_drugs)
+                kpi_card(
+                    label="Total Drugs",
+                    value=f"{num_drugs}",
+                    tooltip_pairs=[
+                        ("What it measures", "Number of drug records available in the database."),
+                        ("Why it matters", "Shows the breadth of the inventory catalog."),
+                    ],
+                    icon="💊",
+                    icon_color="positive",
+                    subtitle="Catalog size",
+                )
                 conn.close()
             else:
                 st.error("❌ Cannot connect to NeonDB")
@@ -134,8 +144,28 @@ with settings_tabs[0]:
     with col3:
         st.write("**Dashboard Status**")
         st.success("✅ All Systems Operational")
-        st.metric("App Version", "1.0.0")
-        st.metric("Theme Mode", st.session_state.get('theme_mode', 'dark').title())
+        kpi_card(
+            label="App Version",
+            value="1.0.0",
+            tooltip_pairs=[
+                ("What it measures", "Current dashboard release version."),
+                ("Why it matters", "Helps confirm the running build."),
+            ],
+            icon="🧩",
+            icon_color="info",
+            subtitle="Release build",
+        )
+        kpi_card(
+            label="Theme Mode",
+            value=st.session_state.get('theme_mode', 'dark').title(),
+            tooltip_pairs=[
+                ("What it measures", "Theme currently applied to the dashboard."),
+                ("Why it matters", "Confirms the visual experience in use."),
+            ],
+            icon="🎨",
+            icon_color="warning",
+            subtitle="Visual theme",
+        )
     
     st.divider()
     
@@ -296,7 +326,17 @@ with settings_tabs[2]:
         )
         
         st.session_state.expiry_warning_days = expiry_days
-        st.metric("Warn on", f"{expiry_days} days before expiry")
+        kpi_card(
+            label="Warn On",
+            value=f"{expiry_days} days",
+            tooltip_pairs=[
+                ("What it measures", "Days before expiry when warnings are emitted."),
+                ("Why it matters", "Controls how early expiry risk is surfaced."),
+            ],
+            icon="⏳",
+            icon_color="warning",
+            subtitle="Expiry warning window",
+        )
     
     st.divider()
     
@@ -459,7 +499,17 @@ with settings_tabs[3]:
                 """
             )
             
-            st.metric("Safety Stock %", f"{safety_stock_factor}%")
+            kpi_card(
+                label="Safety Stock %",
+                value=f"{safety_stock_factor}%",
+                tooltip_pairs=[
+                    ("What it measures", "Base safety stock level as a percentage of daily demand."),
+                    ("Why it matters", "Controls how conservatively inventory is buffered."),
+                ],
+                icon="🛡️",
+                icon_color="positive",
+                subtitle="Buffer level",
+            )
         
         with col3:
             st.write("**Volatility Multiplier**")
@@ -478,7 +528,17 @@ with settings_tabs[3]:
                 """
             )
             
-            st.metric("Volatility Multiplier", f"{volatility_mult}x")
+            kpi_card(
+                label="Volatility Multiplier",
+                value=f"{volatility_mult}x",
+                tooltip_pairs=[
+                    ("What it measures", "Adjustment applied for volatile drugs."),
+                    ("Why it matters", "Helps reflect demand uncertainty in stock planning."),
+                ],
+                icon="📈",
+                icon_color="info",
+                subtitle="Demand variability",
+            )
         
         st.divider()
         
@@ -678,8 +738,28 @@ with settings_tabs[5]:
         """)
         
         # Last backup info
-        st.metric("Last Backup", "Today at 23:59:00")
-        st.metric("Backup Status", "✅ Healthy")
+        kpi_card(
+            label="Last Backup",
+            value="Today at 23:59:00",
+            tooltip_pairs=[
+                ("What it measures", "Timestamp of the last backup action."),
+                ("Why it matters", "Shows whether backup routines are current."),
+            ],
+            icon="💾",
+            icon_color="info",
+            subtitle="Backup timestamp",
+        )
+        kpi_card(
+            label="Backup Status",
+            value="Healthy",
+            tooltip_pairs=[
+                ("What it measures", "Current indicator for backup health."),
+                ("Why it matters", "Confirms backup reliability."),
+            ],
+            icon="✅",
+            icon_color="positive",
+            subtitle="Backup health",
+        )
         
         if st.button("🔄 Trigger Backup Now", use_container_width=True):
             st.success("✅ Backup created successfully!")
@@ -856,13 +936,46 @@ with settings_tabs[7]:
     col1, col2, col3 = st.columns(3)
     
     with col1:
-        st.metric("Query Execution Time", "245 ms", "↓ 12%")
+        kpi_card(
+            label="Query Execution Time",
+            value="245 ms",
+            tooltip_pairs=[
+                ("What it measures", "Average time for data queries to execute."),
+                ("Why it matters", "Indicates dashboard responsiveness."),
+            ],
+            delta="↓ 12%",
+            icon="⚡",
+            icon_color="positive",
+            subtitle="Query responsiveness",
+        )
     
     with col2:
-        st.metric("Cache Hit Rate", "87%", "↑ 5%")
+        kpi_card(
+            label="Cache Hit Rate",
+            value="87%",
+            tooltip_pairs=[
+                ("What it measures", "Percentage of requests served from cache."),
+                ("Why it matters", "Shows performance efficiency."),
+            ],
+            delta="↑ 5%",
+            icon="🧠",
+            icon_color="info",
+            subtitle="Cache efficiency",
+        )
     
     with col3:
-        st.metric("API Response Time", "342 ms", "→ 0%")
+        kpi_card(
+            label="API Response Time",
+            value="342 ms",
+            tooltip_pairs=[
+                ("What it measures", "Average response time for backend services."),
+                ("Why it matters", "Helps monitor downstream system health."),
+            ],
+            delta="→ 0%",
+            icon="🌐",
+            icon_color="warning",
+            subtitle="Service latency",
+        )
 
 # ============== FOOTER ==============
 st.divider()

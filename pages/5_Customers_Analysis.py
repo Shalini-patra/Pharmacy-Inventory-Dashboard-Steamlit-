@@ -85,6 +85,9 @@ if not regular_customers.empty:
                 ("What it measures", "Average number of transactions per regular customer over the last 90 days."),
                 ("Why it matters", "Shows customer purchase frequency and loyalty."),
             ],
+            icon="🧾",
+            icon_color="info",
+            subtitle="Purchase frequency",
         )
     with col2:
         kpi_card(
@@ -94,6 +97,9 @@ if not regular_customers.empty:
                 ("What it measures", "Average spending per regular customer."),
                 ("Why it matters", "Helps identify high-value customers and revenue trends."),
             ],
+            icon="💳",
+            icon_color="positive",
+            subtitle="Average value per customer",
         )
     with col3:
         kpi_card(
@@ -103,6 +109,9 @@ if not regular_customers.empty:
                 ("What it measures", "Average distinct drugs purchased per regular customer."),
                 ("Why it matters", "Shows breadth of product engagement among customers."),
             ],
+            icon="💊",
+            icon_color="warning",
+            subtitle="Product breadth",
         )
 
     st.divider()

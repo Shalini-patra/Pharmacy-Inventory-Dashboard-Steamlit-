@@ -259,30 +259,39 @@ try:
         col1, col2, col3 = st.columns(3, gap="small")
         with col1:
             kpi_card(
-                label="🔴 Immediate Reorder",
+                label="Immediate Reorder",
                 value=f"{immediate_count}",
                 tooltip_pairs=[
                     ("What it measures", "Number of drugs requiring immediate reorder."),
                     ("Why it matters", "Shows urgent stock needs that must be replenished now."),
                 ],
+                icon="🔄",
+                icon_color="danger",
+                subtitle="Urgent replenishment",
             )
         with col2:
             kpi_card(
-                label="🟡 Approaching Reorder",
+                label="Approaching Reorder",
                 value=f"{approaching_count}",
                 tooltip_pairs=[
                     ("What it measures", "Number of drugs nearing reorder threshold."),
                     ("Why it matters", "Highlights items that require close monitoring to avoid stockouts."),
                 ],
+                icon="⚠️",
+                icon_color="warning",
+                subtitle="Needs monitoring",
             )
         with col3:
             kpi_card(
-                label="🟢 Safe Stock",
+                label="Safe Stock",
                 value=f"{safe_count}",
                 tooltip_pairs=[
                     ("What it measures", "Number of drugs currently above reorder levels."),
                     ("Why it matters", "Indicates healthy inventory coverage for stocked items."),
                 ],
+                icon="✅",
+                icon_color="positive",
+                subtitle="Healthy coverage",
             )
 
     else:
@@ -376,6 +385,9 @@ with k1:
             ("What it measures", "Total units with 30 days or less remaining shelf life."),
             ("Why it matters", "Helps prioritize inventory that may expire soon."),
         ],
+        icon="⏳",
+        icon_color="warning",
+        subtitle="Expiry risk units",
     )
 with k2:
     kpi_card(
@@ -385,6 +397,9 @@ with k2:
             ("What it measures", "Monetary value of stock with 30 days or less remaining shelf life."),
             ("Why it matters", "Highlights potential expiry risk and reserve value."),
         ],
+        icon="💸",
+        icon_color="danger",
+        subtitle="Expiry risk value",
     )
 
 # Prepare matrix for display

@@ -93,7 +93,10 @@ try:
                 ("MoM Growth", f"{rev_growth:+.1f}%"),
             ],
             delta=f"{rev_growth:+.1f}%",
-            delta_color="#FFFFFF",
+            delta_color="surface_light",
+            icon="💰",
+            icon_color="positive",
+            subtitle="Revenue trend for the current month",
         )
 
     with col2:
@@ -105,7 +108,10 @@ try:
                 ("MoM Growth", f"{profit_growth:+.1f}%"),
             ],
             delta=f"{profit_growth:+.1f}%",
-            delta_color="#FFFFFF",
+            delta_color="surface_light",
+            icon="₹",
+            icon_color="positive",
+            subtitle="Net profit after cost of goods",
         )
 
     with col3:
@@ -117,7 +123,10 @@ try:
                 ("MoM Growth", f"{cust_growth:+.1f}%"),
             ],
             delta=f"{cust_growth:+.1f}%",
-            delta_color="#FFFFFF",
+            delta_color="surface_light",
+            icon="👤",
+            icon_color="info",
+            subtitle="Customers active in the selected period",
         )
 
     with col4:
@@ -129,7 +138,10 @@ try:
                 ("Filter Context", "Last 90 days"),
             ],
             delta=f"{regular_count} customers",
-            delta_color="#FFFFFF",
+            delta_color="surface_light",
+            icon="⭐",
+            icon_color="warning",
+            subtitle="Share of repeat customer base",
         )
 
 except Exception as e:

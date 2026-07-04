@@ -33,6 +33,7 @@ st.set_page_config(
 # ============== INITIALIZE APP ==============
 from lib.theme import ThemeManager
 from lib.session_state import SessionStateManager
+from lib.ui_overrides import kpi_card
 
 ThemeManager.init_theme()
 SessionStateManager.init_filters()
@@ -163,281 +164,221 @@ with st.sidebar:
     """)
 
 # ============== MAIN CONTENT ==============
-col1, col2 = st.columns([3, 1])
+palette = ThemeManager.get_palette()
 
-with col1:
-    st.markdown("# 🏥 Pharmacy Inventory Dashboard")
-    st.markdown("**Real-time monitoring of stock levels, reorders, and financial performance**")
+with st.container():
+    st.markdown("<div class='dashboard-shell'>", unsafe_allow_html=True)
 
-with col2:
-    # Last updated timestamp
-    st.markdown(f"""
-    <div style='text-align: right; color: {palette['text_secondary']}; font-size: 12px;'>
-    Updated: {datetime.now().strftime('%H:%M:%S')}<br>
-    {datetime.now().strftime('%Y-%m-%d')}
-    </div>
-    """, unsafe_allow_html=True)
+    header_col1, header_col2 = st.columns([3, 1])
+    with header_col1:
+        st.markdown("<div class='dashboard-title-block'>", unsafe_allow_html=True)
+        st.markdown("# 🏥 Pharmacy Inventory Dashboard")
+        st.markdown("**Real-time monitoring of stock levels, reorders, and financial performance**")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-# ============== WELCOME MESSAGE ==============
-col1, col2, col3 = st.columns(3)
+    with header_col2:
+        st.markdown(f"""
+        <div class='dashboard-timestamp'>
+        Updated: {datetime.now().strftime('%H:%M:%S')}<br>
+        {datetime.now().strftime('%Y-%m-%d')}
+        </div>
+        """, unsafe_allow_html=True)
 
-box_style = """
-padding:8px 12px;
-border-radius:8px;
-font-size:11px;
-font-weight:500;
-"""
+    chip_col1, chip_col2, chip_col3 = st.columns(3)
+    with chip_col1:
+        st.markdown("<div class='dashboard-chip'>💡 Use the sidebar to move between dashboards quickly</div>", unsafe_allow_html=True)
+    with chip_col2:
+        st.markdown("<div class='dashboard-chip'>✅ All systems operational and synced</div>", unsafe_allow_html=True)
+    with chip_col3:
+        st.markdown("<div class='dashboard-chip'>📊 Data refreshes every 5 minutes</div>", unsafe_allow_html=True)
 
-with col1:
-    st.markdown(f"""
-    <div style="{box_style} background:#d1ecf1; color:#0c5460; border:1px solid #bee5eb;">
-        💡 <b>Tip:</b> Use the sidebar to navigate between different pages
-    </div>
-    """, unsafe_allow_html=True)
-
-with col2:
-    st.markdown(f"""
-    <div style="{box_style} background:#d4edda; color:#155724; border:1px solid #c3e6cb;">
-        ✅ <b>Status:</b> All systems operational
-    </div>
-    """, unsafe_allow_html=True)
-
-with col3:
-    st.markdown(f"""
-    <div style="{box_style} background:#fff3cd; color:#856404; border:1px solid #ffeeba;">
-        📊 <b>Data:</b> Updates every 5 minutes
-    </div>
-    """, unsafe_allow_html=True)
-
-# ============== OVERVIEW CARDS ON HOMEPAGE ==============
-st.subheader("🎯 Quick Overview")
-
-try:
-    from lib.db import DatabaseManager
-    
-    # Fetch quick metrics
-    monthly_rev = DatabaseManager.get_monthly_revenue_metrics()
-    reorder_list = DatabaseManager.get_reorder_list()
-    
-    col1, col2, col3, col4 = st.columns(4)
-    
-    if len(monthly_rev) > 0:
-        current_rev = monthly_rev.iloc[0]['total_revenue'] or 0
-        current_profit = monthly_rev.iloc[0]['total_profit'] or 0
-        
-        with col1:
-            st.metric(
-                "💰 This Month Revenue",
-                f"₹{current_rev:,.0f}",
-                help="Total revenue for current month"
-            )
-        
-        with col2:
-            st.metric(
-                "📈 This Month Profit",
-                f"₹{current_profit:,.0f}",
-                help="Net profit after cost of goods"
-            )
-    
-    # Operational (drug-level SUM) triage to keep homepage consistent with Reorder Management.
+    st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
+    st.markdown("### 🎯 Quick Overview")
     try:
-        action_rows = DatabaseManager.get_reorder_action_rows()
-        if action_rows is not None and not action_rows.empty and 'stock_status' in action_rows.columns:
-            num_reorder = int((action_rows['stock_status'] == 'Immediate Reorder Needed').sum())
-        else:
+        from lib.db import DatabaseManager
+
+        monthly_rev = DatabaseManager.get_monthly_revenue_metrics()
+        col1, col2, col3, col4 = st.columns(4)
+
+        if len(monthly_rev) > 0:
+            current_rev = monthly_rev.iloc[0]['total_revenue'] or 0
+            current_profit = monthly_rev.iloc[0]['total_profit'] or 0
+
+            with col1:
+                kpi_card(
+                    label="This Month Revenue",
+                    value=f"₹{current_rev:,.0f}",
+                    tooltip_pairs=[
+                        ("What it measures", "Total revenue captured for the current month."),
+                        ("Why it matters", "Shows current business income performance."),
+                    ],
+                    delta="Current month",
+                    icon="💰",
+                    icon_color="positive",
+                    subtitle="Income generated",
+                )
+
+            with col2:
+                kpi_card(
+                    label="This Month Profit",
+                    value=f"₹{current_profit:,.0f}",
+                    tooltip_pairs=[
+                        ("What it measures", "Net profit after cost of goods for the current month."),
+                        ("Why it matters", "Shows current profitability and operating efficiency."),
+                    ],
+                    delta="Current month",
+                    icon="₹",
+                    icon_color="info",
+                    subtitle="Net profitability",
+                )
+
+        try:
+            action_rows = DatabaseManager.get_reorder_action_rows()
+            if action_rows is not None and not action_rows.empty and 'stock_status' in action_rows.columns:
+                num_reorder = int((action_rows['stock_status'] == 'Immediate Reorder Needed').sum())
+            else:
+                num_reorder = 0
+        except Exception:
             num_reorder = 0
-    except Exception:
-        num_reorder = 0
-    
-    with col3:
-        if num_reorder > 0:
-            st.metric(
-                "🔴 Reorder Needed",
-                num_reorder,
-                "URGENT - Click Reorder Management page"
+
+        with col3:
+            if num_reorder > 0:
+                kpi_card(
+                    label="Reorder Needed",
+                    value=f"{num_reorder}",
+                    tooltip_pairs=[
+                        ("What it measures", "Number of drugs still requiring immediate reorder."),
+                        ("Why it matters", "Highlights urgent replenishment needs."),
+                    ],
+                    delta="Urgent action",
+                    icon="🔴",
+                    icon_color="danger",
+                    subtitle="Immediate follow-up",
+                )
+            else:
+                kpi_card(
+                    label="Reorder Needed",
+                    value="0",
+                    tooltip_pairs=[
+                        ("What it measures", "Number of drugs currently needing reorder."),
+                        ("Why it matters", "Confirms inventory is in safe stock."),
+                    ],
+                    delta="All clear",
+                    icon="🟢",
+                    icon_color="positive",
+                    subtitle="Healthy inventory",
+                )
+
+        with col4:
+            today = datetime.now().date()
+            kpi_card(
+                label="Last Updated",
+                value=today.strftime("%d %b %Y"),
+                tooltip_pairs=[
+                    ("What it measures", "The latest dashboard refresh timestamp."),
+                    ("Why it matters", "Shows how current the displayed data is."),
+                ],
+                delta=datetime.now().strftime("%H:%M:%S"),
+                icon="📅",
+                icon_color="warning",
+                subtitle="Freshness of data",
             )
-        else:
-            st.metric(
-                "🟢 Reorder Needed",
-                0,
-                "All drugs in safe stock"
-            )
 
-    
-    with col4:
-        today = datetime.now().date()
-        st.metric(
-            "📅 Last Updated",
-            today.strftime("%d %b %Y"),
-            datetime.now().strftime("%H:%M:%S")
-        )
+    except Exception as e:
+        st.error(f"⚠️ Error loading metrics: {str(e)}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-except Exception as e:
-    st.error(f"⚠️ Error loading metrics: {str(e)}")
+    st.markdown("<div class='dashboard-card'>", unsafe_allow_html=True)
+    st.markdown("### 📈 System Statistics")
+    col1, col2, col3 = st.columns(3)
+    try:
+        from lib.db import DatabaseManager
 
-st.markdown(
-    """
-    <hr style="
-        margin-top:8px;
-        margin-bottom:8px;
-        border:0.5px solid #3d3d3d;
-    ">
-    """,
-    unsafe_allow_html=True
-)
+        conn = DatabaseManager.get_connection()
+        cursor = conn.cursor()
 
-# ============== STATISTICS SECTION ==============
-st.subheader("📈 System Statistics")
+        cursor.execute("""
+            SELECT COUNT(*) FROM transactions 
+            WHERE CAST(transaction_date AS DATE) >= CURRENT_DATE - INTERVAL '30 days';
+        """)
+        transactions_30d = cursor.fetchone()[0] or 0
 
-col1, col2, col3 = st.columns(3)
+        cursor.execute("""
+            SELECT ROUND(COUNT(*)::NUMERIC / 30, 0) 
+            FROM transactions 
+            WHERE CAST(transaction_date AS DATE) >= CURRENT_DATE - INTERVAL '30 days'
+            AND transaction_type = 'Sale';
+        """)
+        avg_daily_sales = cursor.fetchone()[0] or 0
 
-try:
-    from lib.db import DatabaseManager
-    
-    conn = DatabaseManager.get_connection()
-    cursor = conn.cursor()
-    
-    # Total transactions
-    cursor.execute("""
-        SELECT COUNT(*) FROM transactions 
-        WHERE CAST(transaction_date AS DATE) >= CURRENT_DATE - INTERVAL '30 days';
-    """)
-    transactions_30d = cursor.fetchone()[0] or 0
-    
-    # Average daily sales
-    cursor.execute("""
-        SELECT ROUND(COUNT(*)::NUMERIC / 30, 0) 
-        FROM transactions 
-        WHERE CAST(transaction_date AS DATE) >= CURRENT_DATE - INTERVAL '30 days'
-        AND transaction_type = 'Sale';
-    """)
-    avg_daily_sales = cursor.fetchone()[0] or 0
-    
-    # Stock health %
-    cursor.execute("""
-        SELECT 
-            ROUND(
-                COUNT(CASE WHEN stock_status = 'Safe' THEN 1 END)::NUMERIC / 
-                NULLIF(COUNT(*),0)::NUMERIC * 100, 
-                1
-            )
-        FROM inventory_snapshots 
-        WHERE snapshot_date = CURRENT_DATE;
-    """)
-    stock_health = cursor.fetchone()[0] or 0 
-    
-    conn.close()
-    
-    with col1:
-        st.metric("📊 Transactions (30d)", f"{int(transactions_30d):,}")
-    
-    with col2:
-        st.metric("💳 Avg Daily Sales", f"{int(avg_daily_sales)} txns")
-    
-    with col3:
-        st.metric("🟢 Stock Health", f"{stock_health:.1f}%", "Safe stock")
+        cursor.execute("""
+            SELECT 
+                ROUND(
+                    COUNT(CASE WHEN stock_status = 'Safe' THEN 1 END)::NUMERIC / 
+                    NULLIF(COUNT(*),0)::NUMERIC * 100, 
+                    1
+                )
+            FROM inventory_snapshots 
+            WHERE snapshot_date = CURRENT_DATE;
+        """)
+        stock_health = cursor.fetchone()[0] or 0
 
-except Exception as e:
-    st.warning(f"Could not load statistics: {str(e)[:40]}")
+        conn.close()
 
+        with col1:
+            st.metric("📊 Transactions (30d)", f"{int(transactions_30d):,}")
 
-# ============== MAIN CONTENT AREA ==============
-st.markdown("""
-### 📍 Getting Started with Your Dashboard
+        with col2:
+            st.metric("💳 Avg Daily Sales", f"{int(avg_daily_sales)} txns")
 
-**Select a page from the sidebar menu to explore:**
+        with col3:
+            st.metric("🟢 Stock Health", f"{stock_health:.1f}%", "Safe stock")
 
-#### 📊 **Executive Overview**
-View key performance indicators, top/bottom performing drugs, revenue trends, and customer insights at a glance.
+    except Exception as e:
+        st.warning(f"Could not load statistics: {str(e)[:40]}")
+    st.markdown("</div>", unsafe_allow_html=True)
 
-#### 📦 **Reorder Management**
-Monitor drugs that need immediate reorder. View supplier details, suggested quantities, and delivery times. Take action with one-click email alerts.
+    left_col, right_col = st.columns([1.15, 1], gap="small")
 
-#### 💰 **Transactions & Revenue**
-Analyze monthly revenue, profit trends, and transaction patterns. Identify seasonal variations and growth opportunities.
+    with left_col:
+        st.markdown("<div class='dashboard-card compact-section'>", unsafe_allow_html=True)
+        st.markdown("### 📍 Getting Started")
+        st.markdown("**Select a page from the sidebar to explore the dashboard.**")
+        st.markdown("- 📊 Executive Overview for KPIs and trends")
+        st.markdown("- 📦 Reorder Management for urgent stock actions")
+        st.markdown("- 💰 Transactions & Revenue for financial insights")
+        st.markdown("- 💊 Drugs Inventory for stock and alternatives")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-#### 💊 **Drugs Inventory**
-Explore stock levels using interactive heatmaps. Search for drugs, view brand alternatives, and check stock status (Safe/Yellow/Red).
+        st.markdown("<div class='dashboard-card compact-section'>", unsafe_allow_html=True)
+        st.markdown("### 🎯 Key Features")
+        st.markdown("- Real-time data from NeonDB")
+        st.markdown("- Interactive Plotly visualizations")
+        st.markdown("- Responsive design for desktop and tablet")
+        st.markdown("- Alerting for critical stock levels")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-#### 👥 **Customers Analysis**
-Analyze regular customers, purchase frequency, spending patterns, and customer lifetime value.
+    with right_col:
+        st.markdown("<div class='dashboard-card compact-section'>", unsafe_allow_html=True)
+        st.markdown("### 📊 Metrics Tracked")
+        st.markdown("**Inventory**")
+        st.markdown("- Stock levels and reorder points")
+        st.markdown("- Safe / Yellow / Red status")
+        st.markdown("- ABC classification and days of stock")
+        st.markdown("**Financial**")
+        st.markdown("- Monthly revenue and profit")
+        st.markdown("- Loss metrics and gross margin")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-#### 📈 **ABC Analysis**
-Understand revenue concentration through ABC classification. Identify high-impact drugs (Class A), medium-impact (Class B), and low-impact (Class C) items.
+        st.markdown("<div class='dashboard-card compact-section'>", unsafe_allow_html=True)
+        st.markdown("### 💡 Pro Tips")
+        st.markdown("1. Start with Executive Overview for the full picture")
+        st.markdown("2. Check Reorder Management daily for urgent actions")
+        st.markdown("3. Use the theme palette for clearer evening viewing")
+        st.markdown("4. Export data for meetings when needed")
+        st.markdown("</div>", unsafe_allow_html=True)
 
-#### 🔗 **Bundle Analysis**
-Discover frequently bought-together drug combinations. Use insights for strategic bundling and cross-selling opportunities.
-
-#### ⚙️ **Settings**
-Configure dashboard preferences, admin panel, user settings, and system configuration.
-
----
-
-### 🎯 Key Features
-
-✅ **Real-time Data** - Connected to NeonDB, updates every 5 minutes  
-✅ **Interactive Visualizations** - Plotly charts with hover, zoom, pan  
-✅ **Dark/Light Theme** - Toggle theme using sidebar buttons  
-✅ **Cross-Filtering** - Click charts to filter related data  
-✅ **Responsive Design** - Works on desktop, tablet, mobile  
-✅ **Export Capabilities** - Download data as CSV/PDF  
-✅ **Alert System** - Notifications for critical stock levels  
-✅ **Advanced Analytics** - Churn analysis, bundle analytics, ABC classification
-
----
-
-### 📊 Data Metrics Tracked
-
-**Inventory Metrics:**
-- Stock levels by drug
-- Reorder points & safety stock
-- Stock status (Safe/Yellow/Red)
-- ABC classification (A/B/C)
-- Days of stock remaining
-
-**Financial Metrics:**
-- Monthly revenue & profit
-- Cost analysis per drug
-- Loss metrics (stockout + expiry)
-- ROI of smart dashboard
-- Gross margin %
-
-**Customer Metrics:**
-- Transaction frequency
-- Spending patterns
-- Churn rate
-- Regular customer %
-- Customer lifetime value
-
-**Operational Metrics:**
-- Delivery lead times
-- Reorder history
-- Bundle/cross-sell patterns
-- Seasonal demand
-- Forecast accuracy
-
----
-
-### 💡 Pro Tips
-
-1. **Start with Executive Overview** to understand overall performance
-2. **Check Reorder Management daily** to stay on top of inventory
-3. **Use dark theme for evening viewing** (easier on eyes)
-4. **Export data for meetings** using the CSV export button
-5. **Set up email alerts** in Settings for critical reorders
-
-""")
-
-st.markdown(
-    """
-    <hr style="
-        margin-top:8px;
-        margin-bottom:8px;
-        border:0.5px solid #3d3d3d;
-    ">
-    """,
-    unsafe_allow_html=True
-)
+    st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ============== FOOTER ==============
