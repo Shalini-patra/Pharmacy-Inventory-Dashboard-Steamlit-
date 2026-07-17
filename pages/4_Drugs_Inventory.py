@@ -26,9 +26,6 @@ with col1:
         placeholder="e.g., Amoxicillin, Aspirin..."
     )
 
-with col2:
-    show_alternatives = st.checkbox("Show brand alternatives", value=False)
-
 # ============== INVENTORY HEATMAP ==============
 try:
     inventory_data = DatabaseManager.get_inventory_data()
@@ -319,32 +316,6 @@ try:
                     fig2,
                     use_container_width=True,
                 )
-
-        # ============== DRUG DETAILS ==============
-        if show_alternatives:
-            st.subheader("Brand Alternatives")
-            
-            selected_drug = st.selectbox(
-                "Select a drug to view alternatives",
-                options=inventory_data['drug_name'].unique()
-            )
-            
-            if selected_drug:
-                alternatives = DatabaseManager.get_drug_alternatives(selected_drug)
-                
-                if not alternatives.empty:
-                    st.dataframe(
-                        alternatives,
-                        use_container_width=True,
-                        hide_index=True,
-                        column_config={
-                            'drug_id': st.column_config.TextColumn('Drug ID', width='small'),
-                            'drug_name': st.column_config.TextColumn('Brand Name'),
-                            'generic_name': st.column_config.TextColumn('Generic Name'),
-                            'strength': st.column_config.TextColumn('Strength'),
-                            'unit_price_inr': st.column_config.NumberColumn('Price (₹)', format="₹%.2f"),
-                        }
-                    )
 
     # ============== NEW INVENTORY STOCK UPDATE ==============
     st.markdown("---")

@@ -10,13 +10,7 @@ from lib.colors import ColorPalette
 from lib.session_state import SessionStateManager
 from lib.ui_overrides import apply_page_frame, green_banner, kpi_card
 from lib.executive_overview_filters import build_sidebar_filters
-from lib.executive_overview_queries import (
-    get_filtered_top_moving_drugs,
-    get_filtered_bottom_moving_drugs,
-    get_filtered_monthly_revenue_profit_trend,
-    get_filtered_monthly_customer_metrics,
-    get_filtered_weekday_hour_heatmap,
-)
+from lib.executive_overview_queries import get_executive_overview_master_dataframe
 
 st.set_page_config(
     page_title="Executive Overview",
@@ -45,15 +39,23 @@ st.markdown(
 filters = build_sidebar_filters()
 
 try:
-    monthly_trend = get_filtered_monthly_revenue_profit_trend(filters, months=12)
-    monthly_customers = get_filtered_monthly_customer_metrics(filters, months=12)
-    top_drugs = get_filtered_top_moving_drugs(filters, days=30, limit=5)
-    bottom_drugs = get_filtered_bottom_moving_drugs(filters, days=30, limit=5)
-    heatmap_df = get_filtered_weekday_hour_heatmap(filters, months=12)
+    master_df = get_executive_overview_master_dataframe(filters, months=12)
 
-    if monthly_trend.empty:
+    if master_df.empty:
         raise ValueError("No revenue data available for the selected filters.")
 
+    master_df = master_df.copy()
+    master_df["transaction_date"] = pd.to_datetime(master_df["transaction_date"], errors="coerce")
+    master_df = master_df.dropna(subset=["transaction_date"]).copy()
+    master_df["profit"] = (
+        master_df["quantity"] * (master_df["unit_price_inr"] - master_df["unit_cost_inr"])
+    ).fillna(0)
+    master_df["month"] = master_df["transaction_date"].dt.to_period("M").dt.to_timestamp()
+
+    monthly_trend = (
+        master_df.groupby("month", as_index=False)
+        .agg(total_revenue=("total_value_inr", "sum"), total_profit=("profit", "sum"))
+    )
     monthly_trend = monthly_trend.sort_values("month")
     monthly_trend["profit_margin"] = monthly_trend.apply(
         lambda row: (row["total_profit"] / row["total_revenue"] * 100) if row["total_revenue"] else 0,
@@ -69,18 +71,66 @@ try:
     previous_profit = float(monthly_trend.iloc[-2]["total_profit"]) if len(monthly_trend) > 1 else current_profit
     profit_growth = ((current_profit - previous_profit) / previous_profit * 100) if previous_profit else 0
 
-    if monthly_customers.empty:
-        current_cust = 0
+    current_cust = int(master_df["customer_id"].nunique())
+
+    monthly_customers = (
+        master_df.groupby("month", as_index=False)
+        .agg(unique_customers=("customer_id", "nunique"))
+    )
+
+    if monthly_customers.empty or len(monthly_customers) < 2:
         cust_growth = 0
     else:
         monthly_customers = monthly_customers.sort_values("month")
-        current_cust = int(monthly_customers.iloc[-1]["unique_customers"])
-        previous_cust = int(monthly_customers.iloc[-2]["unique_customers"]) if len(monthly_customers) > 1 else current_cust
-        cust_growth = ((current_cust - previous_cust) / previous_cust * 100) if previous_cust else 0
+        current_month_cust = int(monthly_customers.iloc[-1]["unique_customers"])
+        previous_month_cust = int(monthly_customers.iloc[-2]["unique_customers"])
+        cust_growth = ((current_month_cust - previous_month_cust) / previous_month_cust * 100) if previous_month_cust else 0
 
-    regular_cust = DatabaseManager.get_regular_customers(min_transactions=5, days=90)
-    regular_count = len(regular_cust) if regular_cust is not None else 0
+    recent_window = master_df[master_df["transaction_date"] >= (pd.Timestamp.now().normalize() - pd.Timedelta(days=90))]
+    regular_customer_counts = (
+        recent_window.groupby("customer_id", dropna=False).size().loc[lambda s: s >= 5]
+    )
+    regular_count = int(regular_customer_counts.count()) if not regular_customer_counts.empty else 0
     regular_pct = (regular_count / current_cust * 100) if current_cust else 0
+
+    top_drugs_df = master_df[master_df["transaction_date"] >= (pd.Timestamp.now().normalize() - pd.Timedelta(days=30))]
+    top_drugs = (
+        top_drugs_df.groupby(["drug_id", "drug_name", "therapeutic_category", "abc_class"], as_index=False)
+        .agg(total_units=("quantity", "sum"), total_revenue=("total_value_inr", "sum"))
+        .sort_values(["total_units", "total_revenue"], ascending=[False, False])
+        .head(5)
+    )
+    bottom_drugs = (
+        top_drugs_df.groupby(["drug_id", "drug_name", "therapeutic_category", "abc_class"], as_index=False)
+        .agg(total_units=("quantity", "sum"), total_revenue=("total_value_inr", "sum"))
+        .sort_values(["total_units", "total_revenue"], ascending=[True, True])
+        .head(5)
+    )
+
+    heatmap_df = master_df.copy()
+    heatmap_df["weekday"] = heatmap_df["transaction_date"].dt.day_name()
+    heatmap_df["hour_bin"] = heatmap_df["transaction_date"].dt.hour.apply(
+        lambda hour: next(
+            bin_name for bin_name, (start, end) in {
+                "0-2": (0, 2),
+                "2-4": (2, 4),
+                "4-6": (4, 6),
+                "6-8": (6, 8),
+                "8-10": (8, 10),
+                "10-12": (10, 12),
+                "12-14": (12, 14),
+                "14-16": (14, 16),
+                "16-18": (16, 18),
+                "18-20": (18, 20),
+                "20-22": (20, 22),
+                "22-24": (22, 24),
+            }.items() if start <= hour < end
+        )
+    )
+    heatmap_df = (
+        heatmap_df.groupby(["weekday", "hour_bin"], as_index=False)
+        .agg(transaction_count=("transaction_id", "count"))
+    )
 
     col1, col2, col3, col4 = st.columns([1, 1, 1, 1], gap="small")
 
@@ -146,6 +196,7 @@ try:
 
 except Exception as e:
     st.error(f"❌ Error loading KPI and summary data: {str(e)}")
+    master_df = pd.DataFrame()
     monthly_trend = pd.DataFrame()
     monthly_customers = pd.DataFrame()
     top_drugs = pd.DataFrame()

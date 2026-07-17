@@ -26,9 +26,13 @@ def build_sidebar_filters() -> dict:
         therapeutic_categories = []
 
     try:
-        customer_names = DatabaseManager.get_distinct_customer_names()
-    except Exception:
-        customer_names = []
+        customers_dict = DatabaseManager.get_distinct_customers_with_ids()
+        if not customers_dict:
+            st.sidebar.warning("⚠️ No customers available. Check database connection.")
+            customers_dict = {}
+    except Exception as e:
+        st.sidebar.error(f"❌ Error loading customers: {str(e)}")
+        customers_dict = {}
 
     try:
         years = DatabaseManager.get_distinct_years()
@@ -53,14 +57,15 @@ def build_sidebar_filters() -> dict:
         help="Select one or more therapeutic categories to filter the report. Leave blank to include all categories.",
     )
 
-    # --- Customer Name ---
-    selected_customer_names = st.sidebar.multiselect(
-        "Customer Name",
-        options=_normalize_multiselect_options(customer_names),
+    # --- Customer (Name + ID) ---
+    selected_customer_labels = st.sidebar.multiselect(
+        "Customer (Name + ID)",
+        options=list(customers_dict.keys()) if customers_dict else [],
         default=[],
-        key="eo_customer_names",
+        key="eo_customer_ids",
         help="Select one or more customers to filter the report. Leave blank to include all customers.",
     )
+    selected_customer_ids = [customers_dict[label] for label in selected_customer_labels if label in customers_dict]
 
     # --- Year ---
     year_options = ["Select Year"] + [str(y) for y in years]
@@ -109,7 +114,7 @@ def build_sidebar_filters() -> dict:
     return {
         "drug_names": selected_drug_names,
         "therapeutic_categories": selected_therapeutic_categories,
-        "customer_names": selected_customer_names,
+        "customer_ids": selected_customer_ids,
         "year": int(selected_year) if selected_year not in ("Select Year", "All Years") else None,
         "month": month_options.index(selected_month) if selected_month not in ("Select Month", "All Months") else None,
         "start_date": start_date,

@@ -76,6 +76,42 @@ class DatabaseManager:
 
         return where_sql, params
 
+    @staticmethod
+    def get_executive_overview_master_data(
+        months: int = 12,
+        drug_names: Optional[List[str]] = None,
+        therapeutic_categories: Optional[List[str]] = None,
+        customer_names: Optional[List[str]] = None,
+        year: Optional[int] = None,
+        month: Optional[int] = None,
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+    ) -> pd.DataFrame:
+        """Return a transaction-level dataset for the Executive Overview page."""
+        query = f"""
+        SELECT
+            dt.transaction_id,
+            dt.transaction_date,
+            dt.customer_id,
+            c.customer_name,
+            dt.drug_id,
+            d.drug_name,
+            d.therapeutic_category,
+            dt.quantity,
+            dt.total_value_inr,
+            dt.unit_price_inr,
+            dt.unit_cost_inr,
+            a.abc_class
+        FROM transactions dt
+        LEFT JOIN customers c ON dt.customer_id = c.customer_id
+        LEFT JOIN drugs d ON dt.drug_id = d.drug_id
+        LEFT JOIN abc_analysis a ON d.drug_id = a.drug_id
+        WHERE dt.transaction_type = 'Sale'
+          AND CAST(dt.transaction_date AS DATE) >= CURRENT_DATE - INTERVAL '{int(months)} months'
+        ORDER BY dt.transaction_date ASC, dt.transaction_id ASC;
+        """
+        return DatabaseManager._read_sql_safe(query)
+
 
     # ===================== Executive Overview: Filter Helpers =====================
 
@@ -307,6 +343,29 @@ class DatabaseManager:
         query = "SELECT DISTINCT customer_name FROM customers ORDER BY customer_name;"
         df = DatabaseManager._read_sql_safe(query)
         return df["customer_name"].tolist() if not df.empty else []
+
+    @staticmethod
+    @st.cache_data(ttl=600)
+    def get_distinct_customers_with_ids():
+        """Return dict mapping 'Name (ID)' labels to customer_ids (string format)."""
+        try:
+            query = "SELECT DISTINCT customer_id, customer_name FROM customers ORDER BY customer_name, customer_id;"
+            df = DatabaseManager._read_sql_safe(query)
+            if df.empty:
+                return {}
+            result = {}
+            for _, row in df.iterrows():
+                try:
+                    customer_id = str(row["customer_id"]).strip()
+                    customer_name = str(row["customer_name"]).strip()
+                    display_label = f"{customer_name} ({customer_id})"
+                    result[display_label] = customer_id
+                except (ValueError, TypeError, AttributeError):
+                    continue
+            return result
+        except Exception:
+            return {}
+        return result
 
     @staticmethod
     @st.cache_data(ttl=600)
@@ -1415,6 +1474,38 @@ class DatabaseManager:
         return df
 
     @staticmethod
+    def _resolve_generic_family_for_search(search_query: str, drugs_df: Optional[pd.DataFrame] = None):
+        """Resolve a user-entered drug or generic name to the exact generic family."""
+        if not isinstance(search_query, str):
+            return None
+
+        normalized_query = search_query.strip()
+        if not normalized_query:
+            return None
+
+        if drugs_df is None:
+            drugs_df = DatabaseManager.get_drug_lookup()
+
+        if drugs_df is None or drugs_df.empty:
+            return None
+
+        lookup_df = drugs_df.copy()
+        lookup_df["normalized_drug_name"] = lookup_df["drug_name"].fillna("").astype(str).str.strip().str.casefold()
+        lookup_df["normalized_generic_name"] = lookup_df["generic_name"].fillna("").astype(str).str.strip().str.casefold()
+
+        search_key = normalized_query.casefold()
+
+        exact_drug_match = lookup_df.loc[lookup_df["normalized_drug_name"] == search_key, "generic_name"]
+        if not exact_drug_match.empty:
+            return str(exact_drug_match.iloc[0])
+
+        exact_generic_match = lookup_df.loc[lookup_df["normalized_generic_name"] == search_key, "generic_name"]
+        if not exact_generic_match.empty:
+            return str(exact_generic_match.iloc[0])
+
+        return None
+
+    @staticmethod
     @st.cache_data(ttl=600)
     def get_drug_lookup():
         """Return all drugs with their IDs, generic names, and strengths."""
@@ -1438,11 +1529,18 @@ class DatabaseManager:
     @st.cache_data(ttl=60)
     def search_inventory_by_generic_or_drug_name(search_query: str):
         """Search current inventory by generic name or drug name and return all matching generic family members."""
-        conn = DatabaseManager.get_connection()
-        if conn is None:
+        if not isinstance(search_query, str):
             return pd.DataFrame()
 
-        like_pattern = f"%{search_query}%"
+        normalized_query = search_query.strip()
+        if not normalized_query:
+            return pd.DataFrame()
+
+        drugs_df = DatabaseManager.get_drug_lookup()
+        generic_name = DatabaseManager._resolve_generic_family_for_search(normalized_query, drugs_df)
+        if not generic_name:
+            return pd.DataFrame()
+
         query = """
         SELECT
             d.generic_name,
@@ -1455,14 +1553,10 @@ class DatabaseManager:
         FROM inventory_snapshots i
         JOIN drugs d ON i.drug_id = d.drug_id
         WHERE CAST(i.snapshot_date AS DATE) = CURRENT_DATE
-          AND d.generic_name IN (
-              SELECT DISTINCT generic_name
-              FROM drugs
-              WHERE drug_name ILIKE %s OR generic_name ILIKE %s
-          )
+          AND d.generic_name ILIKE %s
         ORDER BY d.drug_name, d.strength;
         """
-        df = DatabaseManager._read_sql_safe(query, params=[like_pattern, like_pattern])
+        df = DatabaseManager._read_sql_safe(query, params=[generic_name])
         return df
 
     @staticmethod
