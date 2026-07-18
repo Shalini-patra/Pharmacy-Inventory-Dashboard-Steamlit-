@@ -1,7 +1,12 @@
 # 🏥 Pharmacy Inventory Dashboard
  
 Modern, interactive Streamlit dashboard for real-time pharmacy inventory monitoring.
- 
+
+## Deploy
+
+#### Live Pharmo App available at 
+<a href="https://pharmo.streamlit.app"><img src="https://static.streamlit.io/badges/streamlit_badge_black_white.svg" width="300" alt="Streamlit App"></a>
+
 ## Features
  
 ✅ **Multi-Page Dashboard** - 8 interactive pages covering all aspects  
