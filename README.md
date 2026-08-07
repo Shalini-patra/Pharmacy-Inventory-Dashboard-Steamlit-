@@ -200,21 +200,15 @@ All data comes from NeonDB (PostgreSQL) which is populated by the ETL pipeline:
 4. Handle exceptions gracefully
 ## Support
  
-📧 Email: support@pharmacy.com  
-🐛 Issues: GitHub Issues  
-💬 Discord: [Join our server]
- 
-## License
- 
-MIT License - See LICENSE file
+📧 Email: tshalinipatra@gmail.com    
  
 ## Authors
  
-- **Shalini** - Product Owner & Dashboard Designer
-- **Claude** - Development & Architecture
+- **T Shalini Patra** - Product Owner & Dashboard Designer
+
 ## Changelog
  
-### v1.0.0 (2024)
+### v1.0.0 (2026)
 - Initial release
 - 8 pages with complete functionality
 - Dark/light theme
@@ -223,5 +217,5 @@ MIT License - See LICENSE file
 - Advanced analytics
 ---
  
-Made with ❤️ for pharmacy management
+Made with ❤️ for pharmacy inventory management
  
